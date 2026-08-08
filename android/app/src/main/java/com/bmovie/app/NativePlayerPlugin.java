@@ -2,6 +2,7 @@ package com.bmovie.app;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
 
@@ -41,9 +42,11 @@ public class NativePlayerPlugin extends Plugin {
             return;
         }
 
+        Uri videoUri = Uri.parse(url);
         Intent viewIntent = new Intent(Intent.ACTION_VIEW);
-        viewIntent.setDataAndType(Uri.parse(url), "video/*");
+        viewIntent.setDataAndType(videoUri, "video/*");
         viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        ClipData sharedUris = "content".equalsIgnoreCase(videoUri.getScheme()) ? ClipData.newRawUri("video", videoUri) : null;
         String title = call.getString("title", "");
         long position = call.getDouble("position", 0.0).longValue();
         viewIntent.putExtra("title", title);
@@ -60,6 +63,11 @@ public class NativePlayerPlugin extends Plugin {
                 if (subtitle == null || subtitle.optString("url").isEmpty()) continue;
                 subtitleUris.add(Uri.parse(subtitle.optString("url")));
                 subtitleNames.add(subtitle.optString("label", "字幕 " + (index + 1)));
+                Uri subtitleUri = subtitleUris.get(subtitleUris.size() - 1);
+                if ("content".equalsIgnoreCase(subtitleUri.getScheme())) {
+                    if (sharedUris == null) sharedUris = ClipData.newRawUri("subtitle", subtitleUri);
+                    else sharedUris.addItem(new ClipData.Item(subtitleUri));
+                }
             }
             if (!subtitleUris.isEmpty()) {
                 viewIntent.putParcelableArrayListExtra("subs", subtitleUris);
@@ -67,13 +75,14 @@ public class NativePlayerPlugin extends Plugin {
                 viewIntent.putExtra("subs.enable", true);
             }
         }
+        if (sharedUris != null) viewIntent.setClipData(sharedUris);
 
         try {
             Intent chooser = Intent.createChooser(viewIntent, "选择播放器");
             getActivity().startActivity(chooser);
             call.resolve();
         } catch (ActivityNotFoundException error) {
-            call.reject("没有找到支持网络视频的外部播放器");
+            call.reject("没有找到支持此视频的外部播放器");
         } catch (Exception error) {
             call.reject("无法拉起外部播放器：" + error.getMessage());
         }

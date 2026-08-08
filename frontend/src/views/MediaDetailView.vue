@@ -1,22 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Captions, CircleAlert, Clock3, ExternalLink, FileVideo2, LoaderCircle, Play, Star, UserRound } from '@lucide/vue'
+import { ArrowLeft, Captions, Check, CircleAlert, Clock3, Download, ExternalLink, FileVideo2, LoaderCircle, Play, Star, UserRound } from '@lucide/vue'
 import { Capacitor } from '@capacitor/core'
 import { useMediaStore, type MediaItem } from '../stores/media'
 import { useOpenListStore } from '../stores/openlist'
 import { openListRequest } from '../services/openlist'
 import { NativePlayer, type NativeSubtitle } from '../services/nativePlayer'
 import { loadPlayerSettings, type PlayerMode } from '../services/playerSettings'
+import { offlineCacheId, useOfflineCacheStore, type OfflineCacheEntry } from '../stores/offlineCache'
 
 const route = useRoute()
 const router = useRouter()
 const media = useMediaStore()
 const openlist = useOpenListStore()
+const offline = useOfflineCacheStore()
 const resolvingPath = ref('')
+const cachingPath = ref('')
 const error = ref('')
 const activeSeasonId = ref('')
 const defaultPlayer = ref<PlayerMode>('internal')
+let cachePoll: number | undefined
 
 const work = computed(() => media.works.find((entry) => entry.id === route.query.id))
 const seasons = computed(() => work.value?.category === 'tv' ? work.value.seasons : [])
@@ -100,12 +104,13 @@ async function rawUrl(path: string) {
   return data.raw_url
 }
 
-async function resolveSubtitles(item: MediaItem): Promise<NativeSubtitle[]> {
+async function resolveSubtitles(item: MediaItem): Promise<Array<NativeSubtitle & { fileName: string }>> {
   const results = await Promise.allSettled((item.subtitles ?? []).map(async (subtitle) => ({
     url: await rawUrl(subtitle.path),
     label: subtitle.label,
     language: subtitle.language,
     mimeType: subtitle.mimeType,
+    fileName: filename(subtitle.path),
   })))
   return results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
 }
@@ -115,9 +120,20 @@ async function play(item?: MediaItem, mode: PlayerMode = defaultPlayer.value) {
   resolvingPath.value = item.path
   error.value = ''
   try {
-    if (openlist.state !== 'ready') await openlist.start()
-    if (openlist.state !== 'ready') throw new Error(openlist.error || 'OpenList 服务未就绪')
-    const [url, subtitles] = await Promise.all([rawUrl(item.path), resolveSubtitles(item)])
+    const cached = offline.entryForPath(item.path)
+    let url: string
+    let subtitles: NativeSubtitle[]
+    if (cached?.status === 'completed' && cached.uri) {
+      url = mode === 'external' ? cached.uri : cached.internalUri || cached.uri
+      subtitles = cached.subtitles.map((subtitle) => ({
+        ...subtitle,
+        url: mode === 'external' ? subtitle.url : subtitle.internalUrl || subtitle.url,
+      }))
+    } else {
+      if (openlist.state !== 'ready') await openlist.start()
+      if (openlist.state !== 'ready') throw new Error(openlist.error || 'OpenList 服务未就绪')
+      ;[url, subtitles] = await Promise.all([rawUrl(item.path), resolveSubtitles(item)])
+    }
     if (Capacitor.isNativePlatform()) {
       if (mode === 'external') {
         await NativePlayer.playExternal({ url, title: filename(item.path), position: (item.position ?? 0) * 1000, subtitles })
@@ -138,6 +154,53 @@ async function play(item?: MediaItem, mode: PlayerMode = defaultPlayer.value) {
   }
 }
 
+function cacheEntry(item?: MediaItem) {
+  return item ? offline.entryForPath(item.path) : undefined
+}
+
+function isCacheActive(entry?: OfflineCacheEntry) {
+  return entry ? ['queued', 'downloading', 'paused'].includes(entry.status) : false
+}
+
+function cacheLabel(item?: MediaItem) {
+  if (!item) return '缓存到本机'
+  const entry = cacheEntry(item)
+  if (!entry) return '缓存到本机'
+  if (entry.status === 'completed') return '已缓存'
+  if (entry.status === 'failed') return '重试下载'
+  if (entry.status === 'paused') return '等待网络'
+  if (entry.status === 'queued') return '等待下载'
+  const total = entry.total || item.size
+  return total > 0 ? `下载中 ${Math.min(99, Math.round(entry.downloaded / total * 100))}%` : '正在下载'
+}
+
+async function cacheMedia(item?: MediaItem) {
+  if (!item || cachingPath.value) return
+  const existing = cacheEntry(item)
+  if (existing?.status === 'completed' || isCacheActive(existing)) return
+  cachingPath.value = item.path
+  error.value = ''
+  try {
+    if (openlist.state !== 'ready') await openlist.start()
+    if (openlist.state !== 'ready') throw new Error(openlist.error || 'OpenList 服务未就绪')
+    const [url, subtitles] = await Promise.all([rawUrl(item.path), resolveSubtitles(item)])
+    await offline.start({
+      id: offlineCacheId(item.path),
+      url,
+      sourcePath: item.path,
+      title: work.value?.category === 'tv' ? `${work.value.title} · ${episodeTitle(item)}` : work.value?.title || filename(item.path),
+      fileName: filename(item.path),
+      poster: work.value?.poster || work.value?.thumbnail,
+      expectedSize: item.size,
+      subtitles,
+    })
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : String(reason)
+  } finally {
+    cachingPath.value = ''
+  }
+}
+
 watch(seasons, (groups) => {
   if (!groups.some((group) => group.id === activeSeasonId.value)) activeSeasonId.value = groups[0]?.id ?? ''
 }, { immediate: true })
@@ -147,9 +210,14 @@ watch(heroImage, () => {
 }, { immediate: true })
 
 onMounted(async () => {
-  const [, settings] = await Promise.all([media.load(), loadPlayerSettings()])
+  const [, settings] = await Promise.all([media.load(), loadPlayerSettings(), offline.refresh()])
   defaultPlayer.value = settings.defaultMode
+  cachePoll = window.setInterval(() => {
+    if (offline.activeCount) void offline.refresh()
+  }, 1200)
 })
+
+onUnmounted(() => window.clearInterval(cachePoll))
 </script>
 
 <template>
@@ -189,6 +257,16 @@ onMounted(async () => {
               <ExternalLink v-else :size="18" />
               {{ alternatePlayer === 'external' ? '其他播放器' : '内置播放' }}
             </button>
+            <button
+              class="cache-action"
+              :disabled="!nextItem || Boolean(cachingPath) || isCacheActive(cacheEntry(nextItem)) || cacheEntry(nextItem)?.status === 'completed'"
+              @click="cacheMedia(nextItem)"
+            >
+              <LoaderCircle v-if="cachingPath === nextItem?.path || isCacheActive(cacheEntry(nextItem))" class="spin" :size="18" />
+              <Check v-else-if="cacheEntry(nextItem)?.status === 'completed'" :size="18" />
+              <Download v-else :size="18" />
+              {{ cacheLabel(nextItem) }}
+            </button>
           </div>
           <p v-if="error" class="play-error"><CircleAlert :size="16" />{{ error }}</p>
         </div>
@@ -208,18 +286,37 @@ onMounted(async () => {
           <span v-else>{{ visibleItems.length }} 个文件</span>
         </div>
         <div class="episode-strip">
-          <button v-for="item in visibleItems" :key="item.path" class="episode-card" :disabled="Boolean(resolvingPath)" @click="play(item)">
-            <span class="episode-image">
-              <FileVideo2 class="episode-placeholder" :size="28" />
-              <img v-if="item.thumb || work.poster || work.thumbnail" class="episode-preview" :src="item.thumb || work.poster || work.thumbnail" alt="" />
-              <img v-if="item.episodeImage" class="episode-still" :src="item.episodeImage" alt="" />
-              <span class="play-chip"><LoaderCircle v-if="resolvingPath === item.path" class="spin" :size="18" /><Play v-else :size="18" fill="currentColor" /></span>
-              <em v-if="durationLabel(item)">{{ durationLabel(item) }}</em>
-              <i v-if="progress(item)" :style="{ width: `${progress(item)}%` }" />
+          <article v-for="item in visibleItems" :key="item.path" class="episode-card">
+            <button class="episode-play" :disabled="Boolean(resolvingPath)" @click="play(item)">
+              <span class="episode-image">
+                <FileVideo2 class="episode-placeholder" :size="28" />
+                <img v-if="item.thumb || work.poster || work.thumbnail" class="episode-preview" :src="item.thumb || work.poster || work.thumbnail" alt="" />
+                <img v-if="item.episodeImage" class="episode-still" :src="item.episodeImage" alt="" />
+                <span class="play-chip"><LoaderCircle v-if="resolvingPath === item.path" class="spin" :size="18" /><Play v-else :size="18" fill="currentColor" /></span>
+                <em v-if="durationLabel(item)">{{ durationLabel(item) }}</em>
+                <i v-if="progress(item)" :style="{ width: `${progress(item)}%` }" />
+              </span>
+            </button>
+            <span class="episode-title-row">
+              <span class="episode-name"><b v-if="work.category === 'tv'">{{ episodeIndex(item) }}.</b>{{ episodeTitle(item) }}</span>
+              <button
+                class="episode-cache"
+                :aria-label="`${cacheLabel(item)}：${episodeTitle(item)}`"
+                :title="cacheLabel(item)"
+                :disabled="Boolean(cachingPath) || isCacheActive(cacheEntry(item)) || cacheEntry(item)?.status === 'completed'"
+                @click="cacheMedia(item)"
+              >
+                <LoaderCircle v-if="cachingPath === item.path || isCacheActive(cacheEntry(item))" class="spin" :size="15" />
+                <Check v-else-if="cacheEntry(item)?.status === 'completed'" :size="15" />
+                <Download v-else :size="15" />
+              </button>
             </span>
-            <span class="episode-name"><b v-if="work.category === 'tv'">{{ episodeIndex(item) }}.</b>{{ episodeTitle(item) }}</span>
-            <span class="episode-tags"><small>{{ sizeLabel(item.size) }}</small><small v-if="item.subtitles?.length"><Captions :size="14" />{{ item.subtitles.length }} 个外挂字幕</small></span>
-          </button>
+            <span class="episode-tags">
+              <small>{{ cacheEntry(item)?.status === 'completed' ? '本机播放' : sizeLabel(item.size) }}</small>
+              <small v-if="isCacheActive(cacheEntry(item))">{{ cacheLabel(item) }}</small>
+              <small v-if="item.subtitles?.length"><Captions :size="14" />{{ item.subtitles.length }} 个外挂字幕</small>
+            </span>
+          </article>
         </div>
       </section>
 
@@ -261,6 +358,8 @@ onMounted(async () => {
 .detail-page{min-height:100svh;padding-bottom:calc(76px + env(safe-area-inset-bottom));background:var(--canvas)}
 .hero{position:relative;min-height:min(74svh,680px);overflow:hidden;background:#121218}.hero-backdrop{position:absolute;inset:0}.hero-backdrop::after{position:absolute;content:"";inset:0;background:linear-gradient(90deg,rgba(8,9,14,.86) 0%,rgba(8,9,14,.42) 58%,rgba(8,9,14,.2)),linear-gradient(0deg,#090a0f 0%,rgba(9,10,15,.72) 24%,rgba(9,10,15,.06) 64%)}.hero-backdrop img{position:absolute;width:100%;height:100%;object-fit:cover}.hero-preview{filter:blur(12px);transform:scale(1.04)}.hero-image{opacity:0;transition:opacity .22s ease}.hero-image.loaded{opacity:1}.back-button{position:absolute;z-index:2;top:calc(20px + env(safe-area-inset-top));left:max(24px,calc((100% - 1180px)/2));display:grid;width:44px;height:44px;place-items:center;border:0;border-radius:50%;color:#fff;background:rgba(10,11,16,.72)}.hero-body{position:relative;z-index:1;display:flex;width:min(100%,1180px);min-height:min(74svh,680px);flex-direction:column;justify-content:flex-end;margin:auto;padding:92px 36px 0}.hero-copy{max-width:760px;padding-bottom:34px}.hero-copy h1{max-width:18ch;margin-bottom:14px;color:#fff;font-family:var(--font-body);font-size:42px;letter-spacing:-.03em;line-height:1.12;text-wrap:balance}.facts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin-bottom:10px;color:#efedf2;font-size:13px}.facts span{display:flex;align-items:center;gap:5px}.facts span:first-child{color:#b9ff7b}.genres{margin-bottom:22px;color:#d2cfd6;font-size:13px}.play-actions{display:flex;flex-wrap:wrap;gap:10px}.play-button,.alternate-button{display:inline-flex;min-height:54px;align-items:center;justify-content:center;gap:10px;padding:0 25px;border-radius:7px;font-size:14px;font-weight:750}.play-button{min-width:220px;border:0;color:#090a0e;background:#fff;font-size:15px}.alternate-button{border:1px solid rgba(255,255,255,.28);color:#fff;background:rgba(10,11,16,.62)}.play-button:disabled,.alternate-button:disabled,.episode-card:disabled{opacity:.58}.play-error{display:flex;align-items:center;gap:7px;margin-top:12px;color:#ff8a86;font-size:12px}.season-tabs{display:flex;gap:34px;overflow-x:auto}.season-tabs button{position:relative;flex:0 0 auto;padding:0 0 17px;border:0;color:#aaa7b0;background:transparent;font-size:17px}.season-tabs button.active{color:#fff;font-weight:750}.season-tabs button.active::after{position:absolute;right:0;bottom:0;left:0;height:3px;content:"";background:var(--beam)}
 .detail-content{width:min(100%,1180px);margin:auto;padding:34px 36px 48px}.episode-section,.synopsis-section,.cast-section,.file-section{margin-bottom:38px}.section-heading{display:flex;align-items:baseline;gap:14px;margin-bottom:17px}.section-heading h2{font-family:var(--font-body);font-size:22px;letter-spacing:-.02em}.section-heading span{color:var(--dim);font-size:11px}.episode-strip,.cast-strip{display:flex;gap:15px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding-bottom:8px}.episode-card{display:grid;width:245px;flex:0 0 245px;gap:8px;padding:0;border:0;color:var(--ink);background:transparent;text-align:left;scroll-snap-align:start}.episode-image{position:relative;display:grid;aspect-ratio:16/9;place-items:center;overflow:hidden;border-radius:7px;color:var(--beam);background:var(--surface-raised)}.episode-placeholder{position:absolute}.episode-image img{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover}.episode-preview{filter:brightness(.76)}.episode-image .episode-still{z-index:1}.episode-image::after{position:absolute;z-index:1;content:"";inset:45% 0 0;background:linear-gradient(transparent,rgba(0,0,0,.7))}.play-chip{position:absolute;z-index:2;display:grid;width:40px;height:40px;place-items:center;border-radius:50%;color:#090a0e;background:rgba(255,255,255,.92)}.episode-image em{position:absolute;z-index:2;right:8px;bottom:7px;color:#fff;font-size:10px;font-style:normal}.episode-image>i{position:absolute;z-index:3;bottom:0;left:0;height:3px;background:var(--beam)}.episode-name{display:block;overflow:hidden;font-size:13px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.episode-name b{margin-right:5px;color:var(--beam)}.episode-tags{display:flex;min-height:18px;align-items:center;gap:10px;color:var(--dim)}.episode-tags small{display:flex;align-items:center;gap:4px;font-size:10px}.synopsis-section>p{max-width:75ch;color:#c4c1c9;font-size:14px;line-height:1.9;text-wrap:pretty}.cast-strip{gap:22px}.cast-member{display:grid;width:92px;flex:0 0 92px;justify-items:center;gap:5px;text-align:center}.avatar{display:grid;width:78px;height:78px;margin-bottom:3px;place-items:center;overflow:hidden;border-radius:50%;color:var(--muted);background:var(--surface-raised)}.avatar img{width:100%;height:100%;object-fit:cover}.cast-member strong,.cast-member small{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cast-member strong{font-size:12px}.cast-member small{color:var(--dim);font-size:10px}.file-section{padding-top:28px;border-top:1px solid var(--line)}.file-section p{max-width:100%;overflow:hidden;color:var(--dim);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.file-section .file-name{margin-bottom:7px;color:var(--ink);font-size:13px}.file-facts{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;color:var(--muted);font-size:11px}.file-facts span{display:flex;align-items:center;gap:5px}.metadata-credit{color:var(--dim);font-size:10px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.cache-action{display:inline-flex;min-height:54px;align-items:center;justify-content:center;gap:8px;padding:0 18px;border:1px solid rgba(255,255,255,.2);border-radius:7px;color:#fff;background:rgba(10,11,16,.62);font-size:13px;font-weight:700}.cache-action:disabled,.episode-play:disabled,.episode-cache:disabled{opacity:.58}.episode-play{display:block;width:100%;padding:0;border:0;color:inherit;background:transparent;text-align:left}.episode-title-row{display:flex;min-width:0;align-items:center;gap:7px}.episode-title-row .episode-name{min-width:0;flex:1}.episode-cache{display:grid;width:30px;height:30px;flex:0 0 auto;place-items:center;border:1px solid var(--line);border-radius:50%;color:var(--muted);background:var(--surface)}.episode-cache:disabled{color:var(--beam)}
 @media(max-width:640px){.hero{min-height:620px}.hero-body{min-height:620px;padding:88px 20px 0}.hero-copy{padding-bottom:28px}.hero-copy h1{font-size:34px}.play-actions{display:grid;grid-template-columns:1fr auto}.play-button{width:100%;min-width:0}.alternate-button{padding-inline:16px}.back-button{left:20px}.season-tabs{gap:28px}.detail-content{padding:28px 20px 40px}.episode-card{width:220px;flex-basis:220px}.section-heading{align-items:flex-start;flex-direction:column;gap:4px}.synopsis-section>p{font-size:13px}.cast-member{width:82px;flex-basis:82px}.avatar{width:70px;height:70px}}
+@media(max-width:640px){.cache-action{grid-column:1/-1;min-height:46px}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}.hero-image{transition:none}.episode-strip,.cast-strip{scroll-behavior:auto}}
 </style>

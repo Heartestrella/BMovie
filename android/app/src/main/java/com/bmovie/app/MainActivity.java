@@ -14,6 +14,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(OpenListPlugin.class);
         registerPlugin(NativePlayerPlugin.class);
         registerPlugin(NativeHttpPlugin.class);
+        registerPlugin(OfflineCachePlugin.class);
         super.onCreate(savedInstanceState);
         bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
             @Override

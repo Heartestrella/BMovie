@@ -20,6 +20,7 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
@@ -120,8 +121,9 @@ public class PlayerActivity extends AppCompatActivity {
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(20_000)
             .setReadTimeoutMs(30_000);
+        DefaultDataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(this, httpFactory);
         player = new ExoPlayer.Builder(this)
-            .setMediaSourceFactory(new DefaultMediaSourceFactory(httpFactory))
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
             .build();
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
             .setPreferredTextLanguages("zh-CN", "zh", "zh-TW", "en")

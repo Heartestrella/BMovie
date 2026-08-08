@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ChevronRight, Cloud, Database, Info, KeyRound, Languages, PlayCircle } from '@lucide/vue'
+import { ChevronRight, Cloud, Database, Download, Info, KeyRound, Languages, PlayCircle } from '@lucide/vue'
 import type { Component } from 'vue'
 import { loadPlayerSettings, type PlayerMode } from '../services/playerSettings'
+import { useOfflineCacheStore } from '../stores/offlineCache'
 
 interface SettingRow { icon: Component; label: string; detail: string; to?: string }
 interface SettingGroup { title: string; rows: SettingRow[] }
 
 const playerMode = ref<PlayerMode>('internal')
+const offline = useOfflineCacheStore()
+function sizeLabel(bytes: number) {
+  if (!bytes) return '暂无缓存'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  return `${(bytes / 1024 ** unit).toFixed(unit >= 3 ? 2 : unit === 2 ? 1 : 0)} ${units[unit]}`
+}
 const groups = computed<SettingGroup[]>(() => [
   {
     title: '语言',
@@ -23,7 +31,10 @@ const groups = computed<SettingGroup[]>(() => [
   },
   {
     title: '播放',
-    rows: [{ icon: PlayCircle, label: '默认播放器', detail: playerMode.value === 'external' ? '系统外部播放器' : 'BMovie 内置播放器', to: '/settings/player' }],
+    rows: [
+      { icon: PlayCircle, label: '默认播放器', detail: playerMode.value === 'external' ? '系统外部播放器' : 'BMovie 内置播放器', to: '/settings/player' },
+      { icon: Download, label: '缓存管理', detail: offline.activeCount ? `${offline.activeCount} 项下载中` : offline.completedCount ? `${offline.completedCount} 项 · ${sizeLabel(offline.totalSize)}` : '暂无缓存', to: '/settings/cache' },
+    ],
   },
   {
     title: '关于',
@@ -31,7 +42,10 @@ const groups = computed<SettingGroup[]>(() => [
   },
 ])
 
-onMounted(async () => { playerMode.value = (await loadPlayerSettings()).defaultMode })
+onMounted(async () => {
+  const [settings] = await Promise.all([loadPlayerSettings(), offline.refresh()])
+  playerMode.value = settings.defaultMode
+})
 </script>
 
 <template>
