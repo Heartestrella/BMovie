@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BMovie</string>
+    <string name="title_activity_main">BMovie</string>
+    <string name="package_name">com.bmovie.app</string>
+    <string name="custom_url_scheme">com.bmovie.app</string>
+    <string name="player_error_message">无法播放此视频（%1$s）</string>
+    <string name="player_compatibility_mode">正在启动兼容模式，首次播放可能需要较长时间…</string>
+    <string name="player_software_decode_failed">兼容模式仍无法解码此视频</string>
+    <string name="player_subtitles">外挂字幕</string>
+    <string name="player_subtitles_on">字幕 开</string>
+    <string name="player_subtitles_off">字幕 关</string>
+</resources>

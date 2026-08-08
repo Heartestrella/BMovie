@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <org.videolan.libvlc.util.VLCVideoLayout
+        android:id="@+id/vlc_video_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/native_player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:keepScreenOn="true" />
+
+    <LinearLayout
+        android:id="@+id/vlc_controls"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="18dp"
+        android:background="#B3000000"
+        android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/vlc_play_pause"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="播放或暂停"
+            android:src="@android:drawable/ic_media_pause"
+            android:tint="#FFFFFF" />
+
+        <SeekBar
+            android:id="@+id/vlc_seek"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="1000"
+            android:progressTint="#8C83FF"
+            android:thumbTint="#FFFFFF" />
+
+        <TextView
+            android:id="@+id/vlc_time"
+            android:layout_width="110dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="00:00 / 00:00"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/player_back"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="start|top"
+        android:layout_margin="16dp"
+        android:background="@drawable/player_button_background"
+        android:contentDescription="返回"
+        android:padding="13dp"
+        android:src="@drawable/ic_arrow_back"
+        android:tint="#FFFFFF" />
+
+    <TextView
+        android:id="@+id/player_title"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="start|top"
+        android:layout_marginStart="76dp"
+        android:layout_marginTop="16dp"
+        android:ellipsize="end"
+        android:gravity="center_vertical"
+        android:maxLines="1"
+        android:textColor="#F2EFE8"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/player_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_gravity="end|top"
+        android:layout_marginTop="20dp"
+        android:layout_marginEnd="18dp"
+        android:background="@drawable/player_button_background"
+        android:gravity="center"
+        android:minWidth="76dp"
+        android:paddingHorizontal="14dp"
+        android:text="@string/player_subtitles_on"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/player_error"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/player_error_background"
+        android:paddingHorizontal="18dp"
+        android:paddingVertical="12dp"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:visibility="gone" />
+</FrameLayout>
