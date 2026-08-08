@@ -96,7 +96,13 @@ public class NativeHttpPlugin extends Plugin {
             if (!"https".equalsIgnoreCase(uri.getScheme()) || !TMDB_HOSTS.contains(uri.getHost()) || "api.themoviedb.org".equals(uri.getHost())) return null;
             initialize(context);
             refreshTmdbHostsAsync(context);
-            Request request = new Request.Builder().url(rawUrl).header("User-Agent", "BMovie/0.1 Android").build();
+            // The singular CDN hostname is frequently reset by mainland ISPs.
+            // The plural hostname serves the same TMDB path and is present in
+            // both TMDB's CDN and the trusted CheckTMDB host list.
+            String effectiveUrl = "image.tmdb.org".equals(uri.getHost())
+                ? rawUrl.replaceFirst("https://image\\.tmdb\\.org/", "https://images.tmdb.org/")
+                : rawUrl;
+            Request request = new Request.Builder().url(effectiveUrl).header("User-Agent", "BMovie/0.1 Android").build();
             try (Response response = httpClient().newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) return null;
                 byte[] bytes = response.body().bytes();

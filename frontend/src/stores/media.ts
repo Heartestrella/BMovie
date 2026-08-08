@@ -159,6 +159,10 @@ export const useMediaStore = defineStore('media', () => {
       const inferred = inferEpisode(item.path)
       return {
         ...item,
+        poster: migrateTmdbImageUrl(item.poster),
+        backdrop: migrateTmdbImageUrl(item.backdrop),
+        episodeImage: migrateTmdbImageUrl(item.episodeImage),
+        cast: item.cast?.map((member) => ({ ...member, image: migrateTmdbImageUrl(member.image) })),
         category: item.category ?? 'other',
         season: item.season ?? inferred.season,
         episode: item.episode ?? inferred.episode,
@@ -229,6 +233,10 @@ function workIdentity(item: MediaItem) {
 
 function normalizeTitle(value: string) {
   return value.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
+}
+
+function migrateTmdbImageUrl(value?: string) {
+  return value?.replace(/^https:\/\/image\.tmdb\.org\//, 'https://images.tmdb.org/')
 }
 
 function compareEpisodes(a: MediaItem, b: MediaItem) {

@@ -44,7 +44,8 @@ interface MetadataBundle {
 }
 
 export const METADATA_SETTINGS_KEY = 'bmovie-metadata-settings'
-export const METADATA_VERSION = 9
+export const METADATA_VERSION = 11
+const TMDB_IMAGE_BASE = 'https://images.tmdb.org/t/p'
 
 export async function loadMetadataSettings(): Promise<MetadataSettings> {
   const saved = await localforage.getItem<Partial<MetadataSettings>>(METADATA_SETTINGS_KEY)
@@ -253,7 +254,7 @@ interface TmdbCandidate {
 }
 
 async function searchTmdb(queries: string[], year: string | undefined, token: string, locale: string, looksLikeEpisode: boolean): Promise<MetadataBundle | null> {
-  const endpoints = looksLikeEpisode ? ['tv', 'multi', 'movie'] as const : ['movie', 'multi', 'tv'] as const
+  const endpoints = looksLikeEpisode ? ['tv'] as const : ['movie', 'multi', 'tv'] as const
   const candidates = new Map<string, TmdbCandidate>()
   let order = 0
 
@@ -282,7 +283,7 @@ async function searchTmdb(queries: string[], year: string | undefined, token: st
         const previous = candidates.get(key)
         if (!previous || candidate.score > previous.score) candidates.set(key, candidate)
       }
-      if (ranked[0]?.score >= 0.84) {
+      if (ranked[0]?.score >= 0.94) {
         const bundle = await hydrateTmdbCandidate(ranked[0], year, token, locale)
         if (bundle) return bundle
       }
@@ -299,7 +300,7 @@ async function searchTmdb(queries: string[], year: string | undefined, token: st
     const releaseYear = (detail.release_date || detail.first_air_date || '').slice(0, 4)
     let score = Math.max(...tmdbTitles(detail).map((title) => confidence(candidate.query, title)), 0)
     if (year && releaseYear === year) score += 0.08
-    if (score < 0.84) continue
+    if (score < 0.94) continue
     return buildTmdbBundle(detail, candidate.mediaType, locale, candidate.entry.title || candidate.entry.name)
   }
   return null
@@ -310,7 +311,7 @@ async function hydrateTmdbCandidate(candidate: TmdbCandidate, year: string | und
   if (!detail) return null
   const releaseYear = (detail.release_date || detail.first_air_date || '').slice(0, 4)
   const titleScore = Math.max(...tmdbTitles(detail).map((title) => confidence(candidate.query, title)), candidate.score)
-  if (titleScore + (year && releaseYear === year ? 0.08 : 0) < 0.84) return null
+  if (titleScore + (year && releaseYear === year ? 0.08 : 0) < 0.94) return null
   return buildTmdbBundle(detail, candidate.mediaType, locale, candidate.entry.title || candidate.entry.name)
 }
 
@@ -373,7 +374,7 @@ function buildTmdbBundle(detail: any, mediaType: 'movie' | 'tv', locale: string,
   const cast: MediaCastMember[] = (detail.credits?.cast ?? []).slice(0, 12).map((entry: any) => ({
     name: entry.name,
     role: entry.character,
-    image: entry.profile_path ? `https://image.tmdb.org/t/p/w185${entry.profile_path}` : undefined,
+    image: entry.profile_path ? `${TMDB_IMAGE_BASE}/w185${entry.profile_path}` : undefined,
   }))
   return {
     base: {
@@ -385,8 +386,8 @@ function buildTmdbBundle(detail: any, mediaType: 'movie' | 'tv', locale: string,
       tagline: localized.tagline || detail.tagline || english.tagline,
       year: releaseDate?.slice(0, 4),
       releaseDate,
-      poster: posterPath ? `https://image.tmdb.org/t/p/w500${posterPath}` : undefined,
-      backdrop: backdropPath ? `https://image.tmdb.org/t/p/original${backdropPath}` : undefined,
+      poster: posterPath ? `${TMDB_IMAGE_BASE}/w500${posterPath}` : undefined,
+      backdrop: backdropPath ? `${TMDB_IMAGE_BASE}/original${backdropPath}` : undefined,
       category: mediaType,
       metadataProvider: 'tmdb',
       rating: Number(detail.vote_average) || undefined,
@@ -417,7 +418,7 @@ async function loadTmdbSeason(id: number, season: number, token: string, locale:
         episode: entry.episode_number,
         title: entry.name,
         overview: entry.overview,
-        image: entry.still_path ? `https://image.tmdb.org/t/p/w780${entry.still_path}` : undefined,
+        image: entry.still_path ? `${TMDB_IMAGE_BASE}/w780${entry.still_path}` : undefined,
         airdate: entry.air_date,
         runtime: entry.runtime,
       })))
