@@ -160,8 +160,8 @@ export const useMediaStore = defineStore('media', () => {
       return {
         ...item,
         poster: migrateTmdbImageUrl(item.poster),
-        backdrop: migrateTmdbImageUrl(item.backdrop),
-        episodeImage: migrateTmdbImageUrl(item.episodeImage),
+        backdrop: resizeTmdbImageUrl(item.backdrop, 'w780'),
+        episodeImage: resizeTmdbImageUrl(item.episodeImage, 'w300'),
         cast: item.cast?.map((member) => ({ ...member, image: migrateTmdbImageUrl(member.image) })),
         category: item.category ?? 'other',
         season: item.season ?? inferred.season,
@@ -237,6 +237,10 @@ function normalizeTitle(value: string) {
 
 function migrateTmdbImageUrl(value?: string) {
   return value?.replace(/^https:\/\/image\.tmdb\.org\//, 'https://images.tmdb.org/')
+}
+
+function resizeTmdbImageUrl(value: string | undefined, size: 'w300' | 'w780') {
+  return migrateTmdbImageUrl(value)?.replace(/\/t\/p\/(?:original|w\d+)\//, `/t/p/${size}/`)
 }
 
 function compareEpisodes(a: MediaItem, b: MediaItem) {

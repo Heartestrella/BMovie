@@ -14,6 +14,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -30,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import okhttp3.Cache;
 import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -131,20 +133,25 @@ public class NativeHttpPlugin extends Plugin {
         if (client != null) return client;
         synchronized (NativeHttpPlugin.class) {
             if (client != null) return client;
-            Dns trustedDns = hostname -> {
-                if (TMDB_HOSTS.contains(hostname)) return tmdbLookup(hostname);
-                if ("api.bgm.tv".equals(hostname)) return bangumiLookup(hostname);
-                return Dns.SYSTEM.lookup(hostname);
-            };
-            client = new OkHttpClient.Builder()
-                .dns(trustedDns)
-                .connectTimeout(7, TimeUnit.SECONDS)
-                .readTimeout(15, TimeUnit.SECONDS)
-                .callTimeout(24, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(true)
-                .build();
+            client = buildHttpClient(null);
             return client;
         }
+    }
+
+    private static OkHttpClient buildHttpClient(Cache cache) {
+        Dns trustedDns = hostname -> {
+            if (TMDB_HOSTS.contains(hostname)) return tmdbLookup(hostname);
+            if ("api.bgm.tv".equals(hostname)) return bangumiLookup(hostname);
+            return Dns.SYSTEM.lookup(hostname);
+        };
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+            .dns(trustedDns)
+            .connectTimeout(7, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(24, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true);
+        if (cache != null) builder.cache(cache);
+        return builder.build();
     }
 
     private static List<InetAddress> tmdbLookup(String hostname) throws java.net.UnknownHostException {
@@ -163,10 +170,16 @@ public class NativeHttpPlugin extends Plugin {
         }
     }
 
-    private static void initialize(Context context) {
+    private static synchronized void initialize(Context context) {
         if (!initialized.compareAndSet(false, true)) return;
         SharedPreferences preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         parseHostList(preferences.getString(PREFS_TMDB_HOSTS, ""));
+        try {
+            Cache cache = new Cache(new File(context.getCacheDir(), "metadata-images"), 96L * 1024L * 1024L);
+            client = buildHttpClient(cache);
+        } catch (Exception ignored) {
+            client = buildHttpClient(null);
+        }
     }
 
     private static void refreshTmdbHostsAsync(Context context) {

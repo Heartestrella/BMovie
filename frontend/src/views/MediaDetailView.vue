@@ -26,10 +26,14 @@ const nextItem = computed(() => visibleItems.value.find((item) => item.position 
   ?? visibleItems.value.find((item) => !item.lastPlayed)
   ?? visibleItems.value[0])
 const alternatePlayer = computed<PlayerMode>(() => defaultPlayer.value === 'external' ? 'internal' : 'external')
-const activeBackdrop = computed(() => activeSeason.value?.items.find((item) => item.episodeImage)?.episodeImage
-  || work.value?.backdrop
+const heroImage = computed(() => work.value?.backdrop
+  || activeSeason.value?.items.find((item) => item.episodeImage)?.episodeImage
   || work.value?.poster
   || work.value?.thumbnail)
+const heroPreview = computed(() => work.value?.poster
+  || work.value?.thumbnail
+  || activeSeason.value?.items.find((item) => item.thumb)?.thumb)
+const heroLoaded = ref(false)
 const detailTitle = computed(() => {
   if (!work.value) return ''
   if (work.value.category === 'tv' && seasons.value.length > 1 && activeSeason.value?.number) return `${work.value.title} 第 ${activeSeason.value.number} 季`
@@ -90,13 +94,6 @@ function progress(item: MediaItem) {
   return item.position && item.duration ? Math.min(100, item.position / item.duration * 100) : 0
 }
 
-function checkPreviewQuality(event: Event) {
-  const image = event.currentTarget as HTMLImageElement
-  const requiredWidth = Math.max(360, Math.round(image.clientWidth * (window.devicePixelRatio || 1) * .8))
-  const requiredHeight = Math.round(requiredWidth * 9 / 16)
-  if (image.naturalWidth < requiredWidth || image.naturalHeight < requiredHeight) image.dataset.lowQuality = 'true'
-}
-
 async function rawUrl(path: string) {
   const data = await openListRequest<{ raw_url: string }>(openlist.baseUrl, '/api/fs/get', { path, password: '' }, openlist.token)
   if (!data.raw_url) throw new Error('网盘没有返回可用的文件地址')
@@ -145,6 +142,10 @@ watch(seasons, (groups) => {
   if (!groups.some((group) => group.id === activeSeasonId.value)) activeSeasonId.value = groups[0]?.id ?? ''
 }, { immediate: true })
 
+watch(heroImage, () => {
+  heroLoaded.value = false
+}, { immediate: true })
+
 onMounted(async () => {
   const [, settings] = await Promise.all([media.load(), loadPlayerSettings()])
   defaultPlayer.value = settings.defaultMode
@@ -154,7 +155,17 @@ onMounted(async () => {
 <template>
   <section v-if="work" class="detail-page">
     <header class="hero">
-      <div v-if="activeBackdrop" class="hero-backdrop"><img :src="activeBackdrop" alt="" /></div>
+      <div v-if="heroImage || heroPreview" class="hero-backdrop">
+        <img v-if="heroPreview && heroPreview !== heroImage" class="hero-preview" :src="heroPreview" alt="" />
+        <img
+          v-if="heroImage"
+          class="hero-image"
+          :class="{ loaded: heroLoaded || !heroPreview || heroImage === heroPreview }"
+          :src="heroImage"
+          alt=""
+          @load="heroLoaded = true"
+        />
+      </div>
       <button class="back-button" aria-label="返回" @click="router.back()"><ArrowLeft :size="22" /></button>
       <div class="hero-body">
         <div class="hero-copy">
@@ -200,7 +211,8 @@ onMounted(async () => {
           <button v-for="item in visibleItems" :key="item.path" class="episode-card" :disabled="Boolean(resolvingPath)" @click="play(item)">
             <span class="episode-image">
               <FileVideo2 class="episode-placeholder" :size="28" />
-              <img v-if="item.episodeImage || item.thumb || activeBackdrop" :src="item.episodeImage || item.thumb || activeBackdrop" alt="" @load="checkPreviewQuality" />
+              <img v-if="item.thumb || work.poster || work.thumbnail" class="episode-preview" :src="item.thumb || work.poster || work.thumbnail" alt="" />
+              <img v-if="item.episodeImage" class="episode-still" :src="item.episodeImage" alt="" />
               <span class="play-chip"><LoaderCircle v-if="resolvingPath === item.path" class="spin" :size="18" /><Play v-else :size="18" fill="currentColor" /></span>
               <em v-if="durationLabel(item)">{{ durationLabel(item) }}</em>
               <i v-if="progress(item)" :style="{ width: `${progress(item)}%` }" />
@@ -247,8 +259,8 @@ onMounted(async () => {
 
 <style scoped>
 .detail-page{min-height:100svh;padding-bottom:calc(76px + env(safe-area-inset-bottom));background:var(--canvas)}
-.hero{position:relative;min-height:min(74svh,680px);overflow:hidden;background:#121218}.hero-backdrop{position:absolute;inset:0}.hero-backdrop::after{position:absolute;content:"";inset:0;background:linear-gradient(90deg,rgba(8,9,14,.86) 0%,rgba(8,9,14,.42) 58%,rgba(8,9,14,.2)),linear-gradient(0deg,#090a0f 0%,rgba(9,10,15,.72) 24%,rgba(9,10,15,.06) 64%)}.hero-backdrop img{width:100%;height:100%;object-fit:cover}.back-button{position:absolute;z-index:2;top:calc(20px + env(safe-area-inset-top));left:max(24px,calc((100% - 1180px)/2));display:grid;width:44px;height:44px;place-items:center;border:0;border-radius:50%;color:#fff;background:rgba(10,11,16,.72)}.hero-body{position:relative;z-index:1;display:flex;width:min(100%,1180px);min-height:min(74svh,680px);flex-direction:column;justify-content:flex-end;margin:auto;padding:92px 36px 0}.hero-copy{max-width:760px;padding-bottom:34px}.hero-copy h1{max-width:18ch;margin-bottom:14px;color:#fff;font-family:var(--font-body);font-size:42px;letter-spacing:-.03em;line-height:1.12;text-wrap:balance}.facts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin-bottom:10px;color:#efedf2;font-size:13px}.facts span{display:flex;align-items:center;gap:5px}.facts span:first-child{color:#b9ff7b}.genres{margin-bottom:22px;color:#d2cfd6;font-size:13px}.play-actions{display:flex;flex-wrap:wrap;gap:10px}.play-button,.alternate-button{display:inline-flex;min-height:54px;align-items:center;justify-content:center;gap:10px;padding:0 25px;border-radius:7px;font-size:14px;font-weight:750}.play-button{min-width:220px;border:0;color:#090a0e;background:#fff;font-size:15px}.alternate-button{border:1px solid rgba(255,255,255,.28);color:#fff;background:rgba(10,11,16,.62)}.play-button:disabled,.alternate-button:disabled,.episode-card:disabled{opacity:.58}.play-error{display:flex;align-items:center;gap:7px;margin-top:12px;color:#ff8a86;font-size:12px}.season-tabs{display:flex;gap:34px;overflow-x:auto}.season-tabs button{position:relative;flex:0 0 auto;padding:0 0 17px;border:0;color:#aaa7b0;background:transparent;font-size:17px}.season-tabs button.active{color:#fff;font-weight:750}.season-tabs button.active::after{position:absolute;right:0;bottom:0;left:0;height:3px;content:"";background:var(--beam)}
-.detail-content{width:min(100%,1180px);margin:auto;padding:34px 36px 48px}.episode-section,.synopsis-section,.cast-section,.file-section{margin-bottom:38px}.section-heading{display:flex;align-items:baseline;gap:14px;margin-bottom:17px}.section-heading h2{font-family:var(--font-body);font-size:22px;letter-spacing:-.02em}.section-heading span{color:var(--dim);font-size:11px}.episode-strip,.cast-strip{display:flex;gap:15px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding-bottom:8px}.episode-card{display:grid;width:245px;flex:0 0 245px;gap:8px;padding:0;border:0;color:var(--ink);background:transparent;text-align:left;scroll-snap-align:start}.episode-image{position:relative;display:grid;aspect-ratio:16/9;place-items:center;overflow:hidden;border-radius:7px;color:var(--beam);background:var(--surface-raised)}.episode-placeholder{position:absolute}.episode-image img{z-index:0;width:100%;height:100%;object-fit:cover}.episode-image img[data-low-quality="true"]{visibility:hidden}.episode-image::after{position:absolute;content:"";inset:45% 0 0;background:linear-gradient(transparent,rgba(0,0,0,.7))}.play-chip{position:absolute;z-index:1;display:grid;width:40px;height:40px;place-items:center;border-radius:50%;color:#090a0e;background:rgba(255,255,255,.92)}.episode-image em{position:absolute;z-index:1;right:8px;bottom:7px;color:#fff;font-size:10px;font-style:normal}.episode-image>i{position:absolute;z-index:2;bottom:0;left:0;height:3px;background:var(--beam)}.episode-name{display:block;overflow:hidden;font-size:13px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.episode-name b{margin-right:5px;color:var(--beam)}.episode-tags{display:flex;min-height:18px;align-items:center;gap:10px;color:var(--dim)}.episode-tags small{display:flex;align-items:center;gap:4px;font-size:10px}.synopsis-section>p{max-width:75ch;color:#c4c1c9;font-size:14px;line-height:1.9;text-wrap:pretty}.cast-strip{gap:22px}.cast-member{display:grid;width:92px;flex:0 0 92px;justify-items:center;gap:5px;text-align:center}.avatar{display:grid;width:78px;height:78px;margin-bottom:3px;place-items:center;overflow:hidden;border-radius:50%;color:var(--muted);background:var(--surface-raised)}.avatar img{width:100%;height:100%;object-fit:cover}.cast-member strong,.cast-member small{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cast-member strong{font-size:12px}.cast-member small{color:var(--dim);font-size:10px}.file-section{padding-top:28px;border-top:1px solid var(--line)}.file-section p{max-width:100%;overflow:hidden;color:var(--dim);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.file-section .file-name{margin-bottom:7px;color:var(--ink);font-size:13px}.file-facts{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;color:var(--muted);font-size:11px}.file-facts span{display:flex;align-items:center;gap:5px}.metadata-credit{color:var(--dim);font-size:10px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.hero{position:relative;min-height:min(74svh,680px);overflow:hidden;background:#121218}.hero-backdrop{position:absolute;inset:0}.hero-backdrop::after{position:absolute;content:"";inset:0;background:linear-gradient(90deg,rgba(8,9,14,.86) 0%,rgba(8,9,14,.42) 58%,rgba(8,9,14,.2)),linear-gradient(0deg,#090a0f 0%,rgba(9,10,15,.72) 24%,rgba(9,10,15,.06) 64%)}.hero-backdrop img{position:absolute;width:100%;height:100%;object-fit:cover}.hero-preview{filter:blur(12px);transform:scale(1.04)}.hero-image{opacity:0;transition:opacity .22s ease}.hero-image.loaded{opacity:1}.back-button{position:absolute;z-index:2;top:calc(20px + env(safe-area-inset-top));left:max(24px,calc((100% - 1180px)/2));display:grid;width:44px;height:44px;place-items:center;border:0;border-radius:50%;color:#fff;background:rgba(10,11,16,.72)}.hero-body{position:relative;z-index:1;display:flex;width:min(100%,1180px);min-height:min(74svh,680px);flex-direction:column;justify-content:flex-end;margin:auto;padding:92px 36px 0}.hero-copy{max-width:760px;padding-bottom:34px}.hero-copy h1{max-width:18ch;margin-bottom:14px;color:#fff;font-family:var(--font-body);font-size:42px;letter-spacing:-.03em;line-height:1.12;text-wrap:balance}.facts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin-bottom:10px;color:#efedf2;font-size:13px}.facts span{display:flex;align-items:center;gap:5px}.facts span:first-child{color:#b9ff7b}.genres{margin-bottom:22px;color:#d2cfd6;font-size:13px}.play-actions{display:flex;flex-wrap:wrap;gap:10px}.play-button,.alternate-button{display:inline-flex;min-height:54px;align-items:center;justify-content:center;gap:10px;padding:0 25px;border-radius:7px;font-size:14px;font-weight:750}.play-button{min-width:220px;border:0;color:#090a0e;background:#fff;font-size:15px}.alternate-button{border:1px solid rgba(255,255,255,.28);color:#fff;background:rgba(10,11,16,.62)}.play-button:disabled,.alternate-button:disabled,.episode-card:disabled{opacity:.58}.play-error{display:flex;align-items:center;gap:7px;margin-top:12px;color:#ff8a86;font-size:12px}.season-tabs{display:flex;gap:34px;overflow-x:auto}.season-tabs button{position:relative;flex:0 0 auto;padding:0 0 17px;border:0;color:#aaa7b0;background:transparent;font-size:17px}.season-tabs button.active{color:#fff;font-weight:750}.season-tabs button.active::after{position:absolute;right:0;bottom:0;left:0;height:3px;content:"";background:var(--beam)}
+.detail-content{width:min(100%,1180px);margin:auto;padding:34px 36px 48px}.episode-section,.synopsis-section,.cast-section,.file-section{margin-bottom:38px}.section-heading{display:flex;align-items:baseline;gap:14px;margin-bottom:17px}.section-heading h2{font-family:var(--font-body);font-size:22px;letter-spacing:-.02em}.section-heading span{color:var(--dim);font-size:11px}.episode-strip,.cast-strip{display:flex;gap:15px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding-bottom:8px}.episode-card{display:grid;width:245px;flex:0 0 245px;gap:8px;padding:0;border:0;color:var(--ink);background:transparent;text-align:left;scroll-snap-align:start}.episode-image{position:relative;display:grid;aspect-ratio:16/9;place-items:center;overflow:hidden;border-radius:7px;color:var(--beam);background:var(--surface-raised)}.episode-placeholder{position:absolute}.episode-image img{position:absolute;inset:0;z-index:0;width:100%;height:100%;object-fit:cover}.episode-preview{filter:brightness(.76)}.episode-image .episode-still{z-index:1}.episode-image::after{position:absolute;z-index:1;content:"";inset:45% 0 0;background:linear-gradient(transparent,rgba(0,0,0,.7))}.play-chip{position:absolute;z-index:2;display:grid;width:40px;height:40px;place-items:center;border-radius:50%;color:#090a0e;background:rgba(255,255,255,.92)}.episode-image em{position:absolute;z-index:2;right:8px;bottom:7px;color:#fff;font-size:10px;font-style:normal}.episode-image>i{position:absolute;z-index:3;bottom:0;left:0;height:3px;background:var(--beam)}.episode-name{display:block;overflow:hidden;font-size:13px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.episode-name b{margin-right:5px;color:var(--beam)}.episode-tags{display:flex;min-height:18px;align-items:center;gap:10px;color:var(--dim)}.episode-tags small{display:flex;align-items:center;gap:4px;font-size:10px}.synopsis-section>p{max-width:75ch;color:#c4c1c9;font-size:14px;line-height:1.9;text-wrap:pretty}.cast-strip{gap:22px}.cast-member{display:grid;width:92px;flex:0 0 92px;justify-items:center;gap:5px;text-align:center}.avatar{display:grid;width:78px;height:78px;margin-bottom:3px;place-items:center;overflow:hidden;border-radius:50%;color:var(--muted);background:var(--surface-raised)}.avatar img{width:100%;height:100%;object-fit:cover}.cast-member strong,.cast-member small{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cast-member strong{font-size:12px}.cast-member small{color:var(--dim);font-size:10px}.file-section{padding-top:28px;border-top:1px solid var(--line)}.file-section p{max-width:100%;overflow:hidden;color:var(--dim);font-size:11px;text-overflow:ellipsis;white-space:nowrap}.file-section .file-name{margin-bottom:7px;color:var(--ink);font-size:13px}.file-facts{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;color:var(--muted);font-size:11px}.file-facts span{display:flex;align-items:center;gap:5px}.metadata-credit{color:var(--dim);font-size:10px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:640px){.hero{min-height:620px}.hero-body{min-height:620px;padding:88px 20px 0}.hero-copy{padding-bottom:28px}.hero-copy h1{font-size:34px}.play-actions{display:grid;grid-template-columns:1fr auto}.play-button{width:100%;min-width:0}.alternate-button{padding-inline:16px}.back-button{left:20px}.season-tabs{gap:28px}.detail-content{padding:28px 20px 40px}.episode-card{width:220px;flex-basis:220px}.section-heading{align-items:flex-start;flex-direction:column;gap:4px}.synopsis-section>p{font-size:13px}.cast-member{width:82px;flex-basis:82px}.avatar{width:70px;height:70px}}
-@media(prefers-reduced-motion:reduce){.spin{animation:none}.episode-strip,.cast-strip{scroll-behavior:auto}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}.hero-image{transition:none}.episode-strip,.cast-strip{scroll-behavior:auto}}
 </style>
