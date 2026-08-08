@@ -24,6 +24,7 @@ const discovered = ref(0)
 const recognized = ref(0)
 const failedFolders = ref(0)
 let scanRun = 0
+const METADATA_CONCURRENCY = 4
 
 const videoPattern = /\.(mp4|mkv|webm|mov|m4v|avi|ts|m2ts|flv|wmv|m3u8)$/i
 const subtitlePattern = /\.(srt|ass|ssa|vtt)$/i
@@ -128,7 +129,7 @@ async function scan() {
         })
         .finally(() => matching.delete(job))
       matching.add(job)
-      if (matching.size >= 3) await Promise.race(matching)
+      if (matching.size >= METADATA_CONCURRENCY) await Promise.race(matching)
     }
 
     while (queue.length && discovered.value < 5000 && run === scanRun) {
@@ -210,7 +211,7 @@ onMounted(async () => {
     media.beginScan()
     await media.finishScan()
     await sources.markScanned()
-  } else if (sources.enabledSources.length && (!media.items.length || sources.needsRescan || media.items.some((item) => item.metadataVersion !== METADATA_VERSION || item.metadataLocale !== metadataLocale))) {
+  } else if (sources.enabledSources.length && (!media.items.length || sources.needsRescan || media.items.some((item) => (item.metadataVersion ?? 0) < METADATA_VERSION || item.metadataLocale !== metadataLocale))) {
     void scan()
   }
 })

@@ -92,6 +92,32 @@ public class NativeHttpPlugin extends Plugin {
         }, "BMovieMetadata").start();
     }
 
+    @PluginMethod
+    public void prefetchImage(PluginCall call) {
+        String rawUrl = call.getString("url", "");
+        new Thread(() -> {
+            try {
+                URI uri = URI.create(rawUrl);
+                if (!"https".equalsIgnoreCase(uri.getScheme()) || !TMDB_HOSTS.contains(uri.getHost()) || "api.themoviedb.org".equals(uri.getHost())) {
+                    throw new IllegalArgumentException("不允许预取此图片地址");
+                }
+                initialize(getContext());
+                refreshTmdbHostsAsync(getContext());
+                String effectiveUrl = "image.tmdb.org".equals(uri.getHost())
+                    ? rawUrl.replaceFirst("https://image\\.tmdb\\.org/", "https://images.tmdb.org/")
+                    : rawUrl;
+                Request request = new Request.Builder().url(effectiveUrl).header("User-Agent", "BMovie/0.1 Android").build();
+                try (Response response = httpClient().newCall(request).execute()) {
+                    if (!response.isSuccessful() || response.body() == null) throw new IllegalStateException("图片预取失败 " + response.code());
+                    response.body().bytes();
+                    call.resolve();
+                }
+            } catch (Exception error) {
+                call.reject(error.getMessage() == null ? "图片预取失败" : error.getMessage(), error);
+            }
+        }, "BMovieArtworkPrefetch").start();
+    }
+
     public static WebResourceResponse interceptTmdbImage(Context context, String rawUrl) {
         try {
             URI uri = URI.create(rawUrl);

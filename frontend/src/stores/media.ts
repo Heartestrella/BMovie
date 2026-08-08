@@ -152,25 +152,35 @@ export const useMediaStore = defineStore('media', () => {
   const recentWorks = computed(() => works.value.filter((work) => work.lastPlayed))
   let scanHistory = new Map<string, MediaItem>()
   let unsavedScanItems = 0
+  let loadRequest: Promise<void> | undefined
 
   async function load() {
     if (loaded.value) return
-    items.value = ((await localforage.getItem<MediaItem[]>(STORAGE_KEY)) ?? []).map((item) => {
-      const inferred = inferEpisode(item.path)
-      return {
-        ...item,
-        poster: migrateTmdbImageUrl(item.poster),
-        backdrop: resizeTmdbImageUrl(item.backdrop, 'w780'),
-        episodeImage: resizeTmdbImageUrl(item.episodeImage, 'w300'),
-        cast: item.cast?.map((member) => ({ ...member, image: migrateTmdbImageUrl(member.image) })),
-        category: item.category ?? 'other',
-        season: item.season ?? inferred.season,
-        episode: item.episode ?? inferred.episode,
-        folderPath: item.folderPath ?? parentPath(item.path),
-      }
-    })
-    reconcileTvFolders(items.value)
-    loaded.value = true
+    if (!loadRequest) {
+      loadRequest = (async () => {
+        items.value = ((await localforage.getItem<MediaItem[]>(STORAGE_KEY)) ?? []).map((item) => {
+          const inferred = inferEpisode(item.path)
+          return {
+            ...item,
+            poster: migrateTmdbImageUrl(item.poster),
+            backdrop: resizeTmdbImageUrl(item.backdrop, 'w780'),
+            episodeImage: resizeTmdbImageUrl(item.episodeImage, 'w300'),
+            cast: item.cast?.map((member) => ({ ...member, image: migrateTmdbImageUrl(member.image) })),
+            category: item.category ?? 'other',
+            season: item.season ?? inferred.season,
+            episode: item.episode ?? inferred.episode,
+            folderPath: item.folderPath ?? parentPath(item.path),
+          }
+        })
+        reconcileTvFolders(items.value)
+        loaded.value = true
+      })()
+    }
+    try {
+      await loadRequest
+    } finally {
+      loadRequest = undefined
+    }
   }
   async function save() {
     const plain = JSON.parse(JSON.stringify(items.value)) as MediaItem[]

@@ -1,23 +1,31 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { App as CapacitorApp } from '@capacitor/app'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Clapperboard, Folder, House, Settings } from '@lucide/vue'
 import { useOpenListStore } from './stores/openlist'
+import { useMediaStore } from './stores/media'
+import { prefetchDetailArtwork } from './services/artworkPrefetch'
 
 const openlist = useOpenListStore()
+const media = useMediaStore()
 const router = useRouter()
 let backHandle: PluginListenerHandle | undefined
 onMounted(async () => {
   openlist.start()
+  await media.load()
   backHandle = await CapacitorApp.addListener('backButton', () => {
     if (router.currentRoute.value.path !== '/') router.back()
     else CapacitorApp.minimizeApp()
   })
 })
-onUnmounted(() => backHandle?.remove())
+const stopArtworkPrefetch = watch(() => media.works, prefetchDetailArtwork, { immediate: true })
+onUnmounted(() => {
+  backHandle?.remove()
+  stopArtworkPrefetch()
+})
 
 const tabs = [
   { to: '/', label: '首页', icon: House },
