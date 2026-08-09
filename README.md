@@ -21,11 +21,13 @@ BMovie 是面向所有网盘用户的私人资源整合器
 <p align="center">
   <img src="docs/screenshots/home.jpg" width="32%" alt="BMovie 首页与继续观看" />
   <img src="docs/screenshots/music-player.jpg" width="32%" alt="BMovie 音乐播放器与歌词" />
+ 
   <img src="docs/screenshots/settings.jpg" width="32%" alt="BMovie 设置" />
-  <img src="docs/screenshots/playing_page.jpg" width="32%" alt="播放详情页" />
+  
 </p>
 
 <p align="center">
+   <img src="docs/screenshots/playing_page.jpg" width="32%" alt="播放详情页" />
   <img src="docs/screenshots/discovery.jpg" width="40%" alt="BMovie 找资源与账号绑定" />
 </p>
 
