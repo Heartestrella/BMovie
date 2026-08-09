@@ -8,10 +8,12 @@ const props = withDefaults(defineProps<{
   alt?: string
   fallbackLabel?: string
   mode?: 'poster' | 'landscape'
+  loading?: 'eager' | 'lazy'
 }>(), {
   alt: '',
   fallbackLabel: '暂无可用画面',
   mode: 'poster',
+  loading: 'eager',
 })
 
 const failedSources = ref(new Set<string>())
@@ -31,8 +33,8 @@ function markFailed(url: string) {
 <template>
   <span class="media-artwork" :class="[mode, source?.kind]">
     <template v-if="source">
-      <img v-if="source.kind === 'thumbnail' && mode === 'poster'" class="thumbnail-fill" :src="source.url" alt="" aria-hidden="true" @error="markFailed(source.url)" />
-      <img class="artwork-image" :src="source.url" :alt="alt" @error="markFailed(source.url)" />
+      <img v-if="source.kind === 'thumbnail' && mode === 'poster'" class="thumbnail-fill" :src="source.url" alt="" aria-hidden="true" :loading="loading" decoding="async" @error="markFailed(source.url)" />
+      <img class="artwork-image" :src="source.url" :alt="alt" :loading="loading" decoding="async" @error="markFailed(source.url)" />
     </template>
     <span v-else class="artwork-empty" role="img" :aria-label="fallbackLabel">
       <FileVideo2 :size="25" />

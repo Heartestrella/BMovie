@@ -70,7 +70,24 @@ export function resolveMetadataLocale(settings: Pick<MetadataSettings, 'metadata
 }
 
 export async function matchMetadata(item: MediaItem, settings: MetadataSettings): Promise<Partial<MediaItem> | null> {
-  const parsed = parseFilename(item.title)
+  const resolved = await resolveMetadataBundle(item, settings)
+  return resolved ? materialize(resolved.bundle.base, resolved.bundle.episodes, parseMediaItem(item), resolved.locale) : null
+}
+
+export async function matchMetadataGroup(items: MediaItem[], settings: MetadataSettings): Promise<Map<string, Partial<MediaItem>>> {
+  const result = new Map<string, Partial<MediaItem>>()
+  if (!items.length) return result
+  const anchor = items.find((item) => parseMediaItem(item).looksLikeEpisode) ?? items[0]
+  const resolved = await resolveMetadataBundle(anchor, settings)
+  if (!resolved) return result
+  for (const item of items) {
+    result.set(item.path, materialize(resolved.bundle.base, resolved.bundle.episodes, parseMediaItem(item), resolved.locale))
+  }
+  return result
+}
+
+async function resolveMetadataBundle(item: MediaItem, settings: MetadataSettings): Promise<{ bundle: MetadataBundle; locale: string } | null> {
+  const parsed = parseMediaItem(item)
   const queries = metadataQueries(item, parsed)
   if (!queries.length) return null
   const locale = resolveMetadataLocale(settings)
@@ -101,18 +118,18 @@ export async function matchMetadata(item: MediaItem, settings: MetadataSettings)
     }
     const localized = await bangumiRequest
     if (localized) {
-      if (primary) return materializeLocalized(primary, localized, parsed, locale)
+      if (primary) return { bundle: mergeLocalizedBundles(primary, localized, parsed), locale }
       if (settings.tvmazeEnabled && parsed.looksLikeEpisode) {
         const tvmaze = await cachedTvmaze(queries[0])
-        if (tvmaze) return materializeLocalized(tvmaze, localized, parsed, locale)
+        if (tvmaze) return { bundle: mergeLocalizedBundles(tvmaze, localized, parsed), locale }
       }
-      return materialize(localized.base, localized.episodes, parsed, locale)
+      return { bundle: localized, locale }
     }
   }
-  if (primary) return materialize(primary.base, primary.episodes, parsed, locale)
+  if (primary) return { bundle: primary, locale }
   if (settings.tvmazeEnabled && parsed.looksLikeEpisode) {
     const bundle = await cachedTvmaze(queries[0])
-    if (bundle) return materialize(bundle.base, bundle.episodes, { ...parsed, season: parsed.season ?? 1 }, locale)
+    if (bundle) return { bundle, locale }
   }
   return null
 }
@@ -123,7 +140,7 @@ function materialize(base: Partial<MediaItem>, episodes: ExternalEpisode[], pars
     : undefined
   return {
     ...base,
-    season: parsed.season,
+    season: parsed.looksLikeEpisode ? parsed.season ?? 1 : parsed.season,
     episode: parsed.episode,
     episodeTitle: episode?.title,
     episodeOverview: episode?.overview,
@@ -145,7 +162,7 @@ async function cachedTvmaze(query: string) {
   return request
 }
 
-function materializeLocalized(identity: MetadataBundle, localized: MetadataBundle, parsed: ParsedFilename, locale: string) {
+function mergeLocalizedBundles(identity: MetadataBundle, localized: MetadataBundle, parsed: ParsedFilename): MetadataBundle {
   const base = compactMerge(identity.base, localized.base, {
     metadataProvider: identity.base.metadataProvider,
     metadataId: identity.base.metadataId,
@@ -156,7 +173,7 @@ function materializeLocalized(identity: MetadataBundle, localized: MetadataBundl
     const translation = localized.episodes.find((entry) => entry.episode === episode.episode && entry.season === (parsed.season ?? 1))
     return compactMerge(episode, translation ?? {})
   })
-  return materialize(base, episodes, parsed, locale)
+  return { ...identity, base, episodes }
 }
 
 function compactMerge<T extends object>(...sources: Partial<T>[]): T {
@@ -195,6 +212,17 @@ function parseFilename(value: string): ParsedFilename {
     .replace(/\s+/g, ' ')
     .trim()
   return { query, year, looksLikeEpisode, season, episode }
+}
+
+function parseMediaItem(item: MediaItem): ParsedFilename {
+  const parsed = parseFilename(item.title)
+  if (parsed.season) return parsed
+  const folderName = (item.folderPath ?? '').split('/').filter(Boolean).at(-1) ?? ''
+  const numeric = folderName.match(/(?:^|\b)(?:S|Season)[ ._-]*(\d{1,2})(?:\b|$)/i)
+    ?? folderName.match(/第\s*(\d{1,2})\s*季/)
+  const chinese: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+  const written = folderName.match(/第\s*([一二三四五六七八九十])\s*季/)
+  return { ...parsed, season: Number(numeric?.[1]) || (written ? chinese[written[1]] : undefined) }
 }
 
 function metadataQueries(item: MediaItem, parsed: ParsedFilename) {

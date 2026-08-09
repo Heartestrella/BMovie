@@ -150,8 +150,6 @@ export const useMediaStore = defineStore('media', () => {
     }).sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0) || a.title.localeCompare(b.title, 'zh-CN'))
   })
   const recentWorks = computed(() => works.value.filter((work) => work.lastPlayed))
-  let scanHistory = new Map<string, MediaItem>()
-  let unsavedScanItems = 0
   let loadRequest: Promise<void> | undefined
 
   async function load() {
@@ -186,33 +184,12 @@ export const useMediaStore = defineStore('media', () => {
     const plain = JSON.parse(JSON.stringify(items.value)) as MediaItem[]
     await localforage.setItem(STORAGE_KEY, plain)
   }
-  async function replaceLibrary(scanned: MediaItem[]) {
-    const history = new Map(items.value.map((item) => [item.path, item]))
-    items.value = scanned.map((item) => ({ ...item, ...pickProgress(history.get(item.path)) }))
-    await save()
+  function previewScan(scanned: MediaItem[]) {
+    items.value = scanned
   }
-  function beginScan() {
-    scanHistory = new Map(items.value.map((item) => [item.path, item]))
-    unsavedScanItems = 0
-    items.value = []
-  }
-  async function appendScanned(item: MediaItem) {
-    const previous = scanHistory.get(item.path)
-    items.value.push({ ...item, ...pickProgress(previous) })
-    unsavedScanItems += 1
-    if (unsavedScanItems >= 20) {
-      unsavedScanItems = 0
-      await save()
-    }
-  }
-  function updateScanned(path: string, patch: Partial<MediaItem>) {
-    const item = items.value.find((entry) => entry.path === path)
-    if (item) Object.assign(item, patch)
-  }
-  async function finishScan() {
-    unsavedScanItems = 0
-    scanHistory.clear()
-    reconcileTvFolders(items.value)
+  async function commitScan(scanned: MediaItem[]) {
+    reconcileTvFolders(scanned)
+    items.value = scanned
     await save()
   }
   async function updateProgress(path: string, title: string, position: number, duration: number) {
@@ -225,15 +202,11 @@ export const useMediaStore = defineStore('media', () => {
     item.lastPlayed = Date.now()
     await save()
   }
-  return { items, works, recent, recentWorks, loaded, load, replaceLibrary, beginScan, appendScanned, updateScanned, finishScan, updateProgress }
+  return { items, works, recent, recentWorks, loaded, load, previewScan, commitScan, updateProgress }
 })
 
-function pickProgress(item?: MediaItem) {
-  return item ? { position: item.position, duration: item.duration, lastPlayed: item.lastPlayed } : {}
-}
-
 function workIdentity(item: MediaItem) {
-  if (item.category === 'pending') return `pending:${item.path}`
+  if (item.category === 'pending') return `pending:${item.folderPath ?? parentPath(item.path)}`
   if (item.category === 'other') return `folder:${item.folderPath ?? parentPath(item.path)}`
   if (!item.metadataProvider) return `file:${item.path}`
   const metadataId = item.metadataId ?? item.tmdbId
@@ -263,7 +236,9 @@ function buildSeasons(items: MediaItem[]): MediaSeason[] {
   const folders = new Map<string, MediaItem[]>()
   for (const item of items) {
     const folderPath = item.folderPath ?? parentPath(item.path)
-    folders.set(folderPath, [...(folders.get(folderPath) ?? []), item])
+    const group = folders.get(folderPath) ?? []
+    group.push(item)
+    folders.set(folderPath, group)
   }
   const groups = [...folders.entries()].map(([folderPath, group]) => {
     const folderName = folderPath.split('/').filter(Boolean).at(-1) ?? folderPath
@@ -312,7 +287,9 @@ function reconcileTvFolders(items: MediaItem[]) {
   for (const item of items) {
     const folderPath = item.folderPath ?? parentPath(item.path)
     item.folderPath = folderPath
-    folders.set(folderPath, [...(folders.get(folderPath) ?? []), item])
+    const group = folders.get(folderPath) ?? []
+    group.push(item)
+    folders.set(folderPath, group)
   }
 
   for (const group of folders.values()) {
