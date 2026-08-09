@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/media', name: 'media-detail', component: () => import('../views/MediaDetailView.vue') },
     { path: '/files/:path(.*)*', name: 'files', component: () => import('../views/FileBrowserView.vue') },
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
+    { path: '/settings/language', name: 'language-settings', component: () => import('../views/LanguageSettingsView.vue') },
     { path: '/settings/storage', name: 'storage-settings', component: () => import('../views/StorageSettingsView.vue') },
     { path: '/settings/library', name: 'library-settings', component: () => import('../views/LibrarySourcesView.vue') },
     { path: '/settings/metadata', name: 'metadata-settings', component: () => import('../views/MetadataSettingsView.vue') },

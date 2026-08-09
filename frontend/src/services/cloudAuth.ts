@@ -1,9 +1,10 @@
 import { registerPlugin } from '@capacitor/core'
 
-export type CloudAuthProvider = 'quark' | 'baidu' | 'aliyun' | 'bilibili'
+export type CloudAuthProvider = 'quark' | 'baidu' | 'aliyun' | 'bilibili' | 'netease'
 
 interface CloudAuthApi {
   login(options: { provider: CloudAuthProvider }): Promise<{ credential: string; credentialType: 'cookie' | 'refresh_token' }>
+  restore(options: { provider: CloudAuthProvider }): Promise<{ credential: string; credentialType: 'cookie' | 'refresh_token' }>
 }
 
 export const CloudAuth = registerPlugin<CloudAuthApi>('CloudAuth')

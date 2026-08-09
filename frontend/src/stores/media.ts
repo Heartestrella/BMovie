@@ -56,6 +56,8 @@ export interface MediaItem {
   musicMetadataFetchedAt?: number
   musicMetadataVersion?: number
   musicArtwork?: string
+  streamUrl?: string
+  streamProvider?: 'netease'
   metadataVersion?: number
   indexVersion?: number
   indexTitle?: string
@@ -190,7 +192,9 @@ export const useMediaStore = defineStore('media', () => {
     if (loaded.value) return
     if (!loadRequest) {
       loadRequest = (async () => {
-        items.value = ((await localforage.getItem<MediaItem[]>(STORAGE_KEY)) ?? []).map((item) => {
+        const savedItems = (await localforage.getItem<MediaItem[]>(STORAGE_KEY)) ?? []
+        const libraryItems = savedItems.filter((item) => !item.path.startsWith('netease://'))
+        items.value = libraryItems.map((item) => {
           const inferred = inferEpisode(item.path)
           return {
             ...item,
@@ -205,6 +209,7 @@ export const useMediaStore = defineStore('media', () => {
           }
         })
         reconcileTvFolders(items.value)
+        if (libraryItems.length !== savedItems.length) await localforage.setItem(STORAGE_KEY, JSON.parse(JSON.stringify(items.value)))
         loaded.value = true
       })()
     }
@@ -227,6 +232,7 @@ export const useMediaStore = defineStore('media', () => {
     await save()
   }
   async function updateProgress(path: string, title: string, position: number, duration: number) {
+    if (path.startsWith('netease://')) return
     let item = items.value.find((entry) => entry.path === path)
     if (!item) { item = { path, title, size: 0, modified: '' }; items.value.push(item) }
     // Some WebViews reset currentTime to zero while tearing down the video.

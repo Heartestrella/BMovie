@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronRight, Clock3, Search } from '@lucide/vue'
-import { useMediaStore, type MediaWork } from '../stores/media'
+import { ChevronRight, Clock3, Disc3, Music2, Play, Search } from '@lucide/vue'
+import { useMediaStore, type MediaItem, type MediaWork } from '../stores/media'
+import { useMusicPlayerStore } from '../stores/musicPlayer'
 import MediaArtwork from '../components/MediaArtwork.vue'
 
-const media = useMediaStore(), router = useRouter()
+const media = useMediaStore(), player = useMusicPlayerStore(), router = useRouter()
 type HomeCard = Partial<MediaWork> & { title: string }
 const placeholders: HomeCard[] = [
   { title: '等待你的第一部影片' },
@@ -13,9 +14,15 @@ const placeholders: HomeCard[] = [
   { title: '跨设备媒体库' },
 ]
 const recent = computed<HomeCard[]>(() => media.recentWorks.length ? media.recentWorks.slice(0, 6) : placeholders)
+const songs = computed(() => media.musicItems.slice(0, 8))
 function open(item: HomeCard) {
   if (!item.id) return router.push('/library')
   router.push({ name: 'media-detail', query: { id: item.id } })
+}
+async function playSong(item: MediaItem) {
+  const index = media.musicItems.findIndex((entry) => entry.path === item.path)
+  await player.playQueue(media.musicItems, Math.max(0, index))
+  router.push('/music')
 }
 onMounted(() => media.load())
 </script>
@@ -50,11 +57,28 @@ onMounted(() => media.load())
       </div>
     </section>
 
-    <section class="start-panel">
-      <p class="panel-kicker">{{ media.items.length ? `媒体库已有 ${media.works.length} 部作品` : '媒体库尚未连接' }}</p>
-      <h2>{{ media.items.length ? '你的私人放映厅已经准备好了' : '把分散的网盘，变成一间放映厅' }}</h2>
-      <p>{{ media.items.length ? '浏览媒体库、搜索影片，或从上方继续上次的观看' : '添加 OpenList 存储后，BMovie 会整理目录、识别影片并在这里生成海报墙' }}</p>
-      <RouterLink :to="media.items.length ? '/library' : '/settings/storage'" class="primary-button">{{ media.items.length ? '打开媒体库' : '开始连接' }}</RouterLink>
+    <section class="music-section" aria-labelledby="music-title">
+      <div class="section-heading">
+        <h2 id="music-title"><Music2 :size="17" /> 音乐</h2>
+        <RouterLink to="/music">全部 <ChevronRight :size="15" /></RouterLink>
+      </div>
+      <div v-if="songs.length" class="song-list">
+        <button v-for="(song,index) in songs" :key="song.path" class="song-row" @click="playSong(song)">
+          <span class="song-art">
+            <img v-if="song.musicArtwork || song.thumb" :src="song.musicArtwork || song.thumb" alt="" />
+            <Disc3 v-else :size="20" />
+            <span class="play-mark"><Play :size="13" fill="currentColor" /></span>
+          </span>
+          <span class="song-index">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="song-copy"><strong>{{ song.title }}</strong><small>{{ song.artists?.join(' / ') || song.artist || '未知艺术家' }}{{ song.album ? ` · ${song.album}` : '' }}</small></span>
+          <small class="song-duration">{{ song.duration ? `${Math.floor(song.duration / 60)}:${String(Math.floor(song.duration % 60)).padStart(2, '0')}` : '—' }}</small>
+        </button>
+      </div>
+      <div v-else class="music-empty">
+        <Disc3 :size="24" />
+        <span><strong>音乐列表还是空的</strong><small>在媒体库加入音乐目录后，歌曲会出现在这里</small></span>
+        <RouterLink to="/settings/storage">添加媒体</RouterLink>
+      </div>
     </section>
   </section>
 </template>
@@ -74,9 +98,11 @@ onMounted(() => media.load())
 .frame-mark { position: absolute; right: 28px; bottom: 9px; color: rgba(242, 239, 232, .16); font-family: var(--font-display); font-size: 66px; font-weight: 800; line-height: .8; }
 .film-frame h3 { margin: 0 0 3px; font-size: 14px; font-weight: 650; }
 .film-frame p { margin: 0; color: var(--dim); font-size: 11px; }
-.start-panel { margin-top: 34px; padding: 25px 0 4px; border-top: 1px solid var(--line); }
-.panel-kicker { margin-bottom: 8px; color: var(--beam); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
-.start-panel h2 { max-width: 430px; margin-bottom: 9px; font-size: clamp(23px, 6vw, 32px); line-height: 1.2; }
-.start-panel > p:not(.panel-kicker) { max-width: 510px; margin-bottom: 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.music-section{margin-top:34px;padding-top:25px;border-top:1px solid var(--line)}
+.song-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px}
+.song-row{display:grid;grid-template-columns:42px 25px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 0;border:0;border-bottom:1px solid var(--line);color:var(--ink);background:transparent;text-align:left}
+.song-art{position:relative;display:grid;width:42px;height:42px;place-items:center;overflow:hidden;border-radius:6px;color:var(--beam);background:var(--surface)}.song-art img{width:100%;height:100%;object-fit:cover}.play-mark{position:absolute;inset:0;display:grid;place-items:center;color:white;background:rgba(8,9,14,.55);opacity:0;transition:opacity .18s}.song-row:hover .play-mark{opacity:1}.song-index{color:var(--dim);font:600 10px/1 var(--font-display)}.song-copy{display:grid;min-width:0;gap:4px}.song-copy strong,.song-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.song-copy strong{font-size:13px}.song-copy small,.song-duration{color:var(--dim);font-size:10px}.music-empty{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:12px;padding:16px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}.music-empty>span{display:grid;gap:4px}.music-empty strong{font-size:13px}.music-empty small{color:var(--dim);font-size:10px}.music-empty a{color:var(--beam);font-size:11px;text-decoration:none}
 @media (min-width: 720px) { .strip-track { grid-auto-columns: 290px; margin-right: 0; padding-right: 0; } .frame-art { height: 162px; } }
+@media(max-width:700px){.song-list{grid-template-columns:1fr}.song-row:nth-child(n+7){display:none}}
+@media(prefers-reduced-motion:reduce){.play-mark{transition:none}}
 </style>

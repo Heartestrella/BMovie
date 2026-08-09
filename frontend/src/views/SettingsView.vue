@@ -4,6 +4,7 @@ import { ChevronRight, Cloud, Compass, Database, Download, Info, KeyRound, Langu
 import type { Component } from 'vue'
 import { loadPlayerSettings, type PlayerMode } from '../services/playerSettings'
 import { useOfflineCacheStore } from '../stores/offlineCache'
+import { currentLocale, t } from '../i18n'
 
 interface SettingRow { icon: Component; label: string; detail: string; to?: string }
 interface SettingGroup { title: string; rows: SettingRow[] }
@@ -11,37 +12,37 @@ interface SettingGroup { title: string; rows: SettingRow[] }
 const playerMode = ref<PlayerMode>('internal')
 const offline = useOfflineCacheStore()
 function sizeLabel(bytes: number) {
-  if (!bytes) return '暂无缓存'
+  if (!bytes) return t('settings.noCache')
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
   return `${(bytes / 1024 ** unit).toFixed(unit >= 3 ? 2 : unit === 2 ? 1 : 0)} ${units[unit]}`
 }
 const groups = computed<SettingGroup[]>(() => [
   {
-    title: '语言',
-    rows: [{ icon: Languages, label: '界面语言', detail: '简体中文（默认）' }],
+    title: t('settings.languageGroup'),
+    rows: [{ icon: Languages, label: t('settings.interfaceLanguage'), detail: currentLocale.value === 'en-US' ? 'English' : '简体中文', to: '/settings/language' }],
   },
   {
-    title: '内容来源',
+    title: t('settings.sourcesGroup'),
     rows: [
-      { icon: Cloud, label: '网盘存储', detail: '添加和管理', to: '/settings/storage' },
-      { icon: Database, label: '媒体资源库', detail: '自定义扫描目录', to: '/settings/library' },
-      { icon: KeyRound, label: '元数据来源', detail: '语言、Bangumi、TMDB、TVmaze', to: '/settings/metadata' },
-      { icon: Search, label: '找资源', detail: 'B站追番、弹幕抓取与绑定', to: '/settings/discovery' },
+      { icon: Cloud, label: t('settings.storage'), detail: t('settings.storageDetail'), to: '/settings/storage' },
+      { icon: Database, label: t('settings.library'), detail: t('settings.libraryDetail'), to: '/settings/library' },
+      { icon: KeyRound, label: t('settings.metadata'), detail: t('settings.metadataDetail'), to: '/settings/metadata' },
+      { icon: Search, label: t('settings.discovery'), detail: t('settings.discoveryDetail'), to: '/settings/discovery' },
     ],
   },
   {
-    title: '播放',
+    title: t('settings.playbackGroup'),
     rows: [
-      { icon: PlayCircle, label: '默认播放器', detail: playerMode.value === 'external' ? '系统外部播放器' : 'BMovie 内置播放器', to: '/settings/player' },
-      { icon: Download, label: '缓存管理', detail: offline.activeCount ? `${offline.activeCount} 项下载中` : offline.completedCount ? `${offline.completedCount} 项 · ${sizeLabel(offline.totalSize)}` : '暂无缓存', to: '/settings/cache' },
+      { icon: PlayCircle, label: t('settings.defaultPlayer'), detail: playerMode.value === 'external' ? t('settings.externalPlayer') : t('settings.internalPlayer'), to: '/settings/player' },
+      { icon: Download, label: t('settings.cache'), detail: offline.activeCount ? t('settings.downloading', { count: offline.activeCount }) : offline.completedCount ? `${offline.completedCount} · ${sizeLabel(offline.totalSize)}` : t('settings.noCache'), to: '/settings/cache' },
     ],
   },
   {
-    title: '关于',
+    title: t('settings.aboutGroup'),
     rows: [
-      { icon: Compass, label: '新手引导', detail: '重新查看推荐配置', to: '/onboarding' },
-      { icon: Info, label: '关于 BMovie', detail: '版本 0.1.0', to: '/settings/about' },
+      { icon: Compass, label: t('settings.onboarding'), detail: t('settings.onboardingDetail'), to: '/onboarding' },
+      { icon: Info, label: t('settings.about'), detail: t('settings.version', { version: '0.1.0' }), to: '/settings/about' },
     ],
   },
 ])
@@ -57,7 +58,7 @@ onMounted(async () => {
     <header class="page-header">
       <div>
         <p class="eyebrow">Settings</p>
-        <h1>设置</h1>
+        <h1>{{ t('nav.settings') }}</h1>
       </div>
     </header>
 

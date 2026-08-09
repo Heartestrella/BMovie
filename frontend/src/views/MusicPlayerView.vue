@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Disc3, Flag, ListMusic, LoaderCircle, Music2, Pause, Play, SkipBack, SkipForward } from '@lucide/vue'
+import { ArrowLeft, ChevronDown, Disc3, Flag, ListMusic, LoaderCircle, Music2, Pause, Play, SkipBack, SkipForward } from '@lucide/vue'
 import { useMusicPlayerStore } from '../stores/musicPlayer'
 import { t } from '../i18n'
 
 const player = useMusicPlayerStore()
 const router = useRouter()
 const lyricsScroller = ref<HTMLElement>()
+const metadataExpanded = ref(false)
 
 const item = computed(() => player.current)
 const fileFormat = computed(() => item.value?.path.split('.').at(-1)?.toLocaleUpperCase() || '—')
 const queuePosition = computed(() => player.currentIndex >= 0 ? `${player.currentIndex + 1} / ${player.queue.length}` : '')
 const backgroundStyle = computed(() => player.artwork ? { backgroundImage: `url("${player.artwork.replaceAll('"', '\\"')}")` } : {})
+const timelineStyle = computed(() => ({ '--progress': `${Math.max(0, Math.min(100, player.duration ? player.position / player.duration * 100 : 0))}%` }))
 const artistLabel = computed(() => player.onlineInfo?.artists.join(' / ') || item.value?.artists?.join(' / ') || item.value?.artist || t('music.unknownArtist'))
 const metadata = computed(() => {
   if (!item.value) return []
@@ -80,6 +82,7 @@ async function centerActiveLyric() {
 
 watch(() => player.activeLyricIndex, centerActiveLyric)
 watch(() => item.value?.path, () => {
+  metadataExpanded.value = false
   lyricsScroller.value?.scrollTo({ top: 0, behavior: 'auto' })
   void centerActiveLyric()
 })
@@ -102,6 +105,7 @@ onMounted(() => {
     </header>
 
     <main class="player-content">
+      <div class="player-left">
       <section class="record-panel">
         <div class="artwork-shell">
           <img v-if="player.artwork" :src="player.artwork" :alt="item.album || t('music.unknownAlbum')" />
@@ -114,7 +118,7 @@ onMounted(() => {
         </div>
 
         <div class="timeline">
-          <input type="range" min="0" :max="Math.max(player.duration, 1)" :value="player.position" :aria-label="t('music.progress')" @input="player.seek(Number(($event.target as HTMLInputElement).value))" />
+          <input type="range" min="0" :max="Math.max(player.duration, 1)" :value="player.position" :style="timelineStyle" :aria-label="t('music.progress')" @input="player.seek(Number(($event.target as HTMLInputElement).value))" />
           <div><span>{{ timeLabel(player.position) }}</span><span>{{ timeLabel(player.duration) }}</span></div>
         </div>
 
@@ -126,6 +130,20 @@ onMounted(() => {
 
       </section>
 
+      <section class="metadata-panel" :aria-label="t('music.trackInfo')">
+        <button class="metadata-toggle" type="button" :aria-expanded="metadataExpanded" :aria-label="t(metadataExpanded ? 'music.collapseTrackInfo' : 'music.expandTrackInfo')" @click="metadataExpanded = !metadataExpanded">
+          <span><h2>{{ t('music.trackInfo') }}</h2><small :class="{ loading: player.metadataLoading }"><LoaderCircle v-if="player.metadataLoading" class="spin" :size="12" />{{ player.metadataLoading ? t('music.onlineMatching') : player.onlineInfo ? t('music.onlineMatched') : '' }}</small></span>
+          <ChevronDown :size="18" :class="{ expanded: metadataExpanded }" />
+        </button>
+        <Transition name="metadata-reveal">
+          <div v-show="metadataExpanded" class="metadata-content">
+            <dl><div v-for="row in metadata" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div></dl>
+            <p :title="item.path"><Music2 :size="14" />{{ item.folderPath || item.libraryRoot || item.path }}</p>
+          </div>
+        </Transition>
+      </section>
+      </div>
+
       <section class="lyrics-panel" :aria-label="t('music.lyrics')">
         <div class="lyrics-heading"><div><h2>{{ t('music.lyrics') }}</h2><span v-if="player.lyrics.length">{{ t(player.lyricsSource === 'local' ? 'music.localLyrics' : 'music.onlineLyrics') }}</span></div><button v-if="player.lyricsSource === 'netease'" class="report-button" :disabled="player.reportingLyrics" @click="player.reportCurrentLyrics"><LoaderCircle v-if="player.reportingLyrics" class="spin" :size="13" /><Flag v-else :size="13" />{{ t(player.reportingLyrics ? 'music.reportingLyrics' : 'music.reportLyrics') }}</button></div>
         <div v-if="player.lyrics.length" ref="lyricsScroller" class="lyrics-scroller" aria-live="polite">
@@ -135,11 +153,6 @@ onMounted(() => {
         <p v-if="player.lyricsNotice" class="lyrics-notice">{{ player.lyricsNotice }}</p>
       </section>
 
-      <section class="metadata-panel" :aria-label="t('music.trackInfo')">
-        <div class="metadata-heading"><h2>{{ t('music.trackInfo') }}</h2><span :class="{ loading: player.metadataLoading }"><LoaderCircle v-if="player.metadataLoading" class="spin" :size="12" />{{ player.metadataLoading ? t('music.onlineMatching') : player.onlineInfo ? t('music.onlineMatched') : '' }}</span></div>
-        <dl><div v-for="row in metadata" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div></dl>
-        <p :title="item.path"><Music2 :size="14" />{{ item.folderPath || item.libraryRoot || item.path }}</p>
-      </section>
     </main>
 
     <p v-if="player.error" class="player-error">{{ player.error }}</p>
@@ -149,8 +162,14 @@ onMounted(() => {
 <style scoped>
 .full-player{position:fixed;z-index:30;inset:0;overflow:hidden;color:var(--ink);background:#090a0e}.artwork-atmosphere,.atmosphere-shade{position:absolute;inset:-50px;pointer-events:none}.artwork-atmosphere{background-position:center;background-size:cover;filter:blur(70px) saturate(.72);opacity:.25;transform:scale(1.12)}.atmosphere-shade{background:linear-gradient(180deg,rgba(9,10,14,.72),rgba(9,10,14,.92) 45%,#090a0e 100%)}.player-header{position:relative;z-index:1;display:grid;height:calc(68px + env(safe-area-inset-top));grid-template-columns:44px 1fr 44px;align-items:center;padding:env(safe-area-inset-top) max(18px,env(safe-area-inset-right)) 0 max(18px,env(safe-area-inset-left));text-align:center}.player-header>div{display:grid;gap:2px}.player-header strong{font-size:13px}.player-header small{color:var(--muted);font-size:10px}.round-button{display:grid;width:40px;height:40px;place-items:center;border:1px solid rgba(242,239,232,.14);border-radius:50%;background:rgba(17,19,26,.58)}.player-content{position:relative;z-index:1;display:grid;height:calc(100svh - 68px - env(safe-area-inset-top));grid-template-columns:minmax(300px,.82fr) minmax(360px,1.18fr);grid-template-rows:minmax(0,1fr) auto;gap:18px clamp(32px,5vw,76px);max-width:1200px;margin:0 auto;padding:28px clamp(30px,6vw,86px) 38px}.record-panel{display:flex;min-height:0;align-items:center;flex-direction:column;grid-column:1;grid-row:1}.artwork-shell{display:grid;width:min(36vh,330px);max-width:100%;aspect-ratio:1;flex:0 1 auto;place-items:center;overflow:hidden;border-radius:12px;background:var(--surface-raised);box-shadow:0 6px 8px rgba(0,0,0,.28)}.artwork-shell img{width:100%;height:100%;object-fit:cover}.artwork-shell span{display:grid;width:100%;height:100%;place-items:center;color:var(--beam);background:radial-gradient(circle at 38% 32%,var(--beam-soft),var(--surface-raised) 64%)}.track-heading{width:100%;margin-top:20px;text-align:center}.track-heading h1{overflow:hidden;margin:0;font-family:var(--font-body);font-size:23px;font-weight:750;letter-spacing:-.025em;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}.track-heading p{overflow:hidden;margin:7px 0 0;color:#b6b4bb;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.timeline{width:100%;margin-top:20px}.timeline input{display:block;width:100%;height:4px;margin:0;accent-color:var(--beam)}.timeline>div{display:flex;justify-content:space-between;margin-top:5px;color:#aaa8b1;font-size:10px;font-variant-numeric:tabular-nums}.transport{display:flex;align-items:center;justify-content:center;gap:31px;margin-top:9px}.transport button{display:grid;width:44px;height:44px;place-items:center;border:0;background:transparent}.transport button:disabled{opacity:.28}.transport .play-toggle{width:58px;height:58px;border-radius:50%;color:#111219;background:var(--ink)}.metadata-panel{width:100%;grid-column:1;grid-row:2;padding-top:15px;border-top:1px solid rgba(242,239,232,.12)}.metadata-panel h2{margin:0 0 11px;font-family:var(--font-body);font-size:12px}.metadata-panel dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;margin:0}.metadata-panel dl>div{min-width:0}.metadata-panel dt{color:#aaa8b1;font-size:9px}.metadata-panel dd{overflow:hidden;margin:3px 0 0;font-size:11px;font-weight:650;text-overflow:ellipsis;white-space:nowrap}.metadata-panel>p{display:flex;min-width:0;align-items:center;gap:6px;overflow:hidden;margin:12px 0 0;color:#aaa8b1;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.metadata-panel>p svg{flex:0 0 auto}.lyrics-panel{display:grid;min-height:0;grid-column:2;grid-row:1/3;grid-template-rows:auto 1fr;padding-left:clamp(20px,3vw,48px);border-left:1px solid rgba(242,239,232,.12)}.lyrics-heading{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 16px}.lyrics-heading h2{margin:0;font-family:var(--font-body);font-size:13px}.lyrics-heading span{color:var(--muted);font-size:10px}.lyrics-scroller{min-height:0;padding:42% 0;overflow-y:auto;overscroll-behavior:contain;scroll-behavior:smooth;mask-image:linear-gradient(transparent,#000 13%,#000 87%,transparent)}.lyric-line{display:block;width:100%;padding:11px 4px;border:0;color:rgba(242,239,232,.42);background:transparent;font-size:16px;font-weight:600;line-height:1.55;text-align:left;transform-origin:left center}.lyric-line.active{color:var(--ink);font-size:21px;font-weight:760}.lyrics-empty{display:grid;align-content:center;justify-items:center;gap:10px;color:#aaa8b1;text-align:center}.lyrics-empty p{font-size:12px}.player-error{position:absolute;z-index:2;right:20px;bottom:18px;left:20px;margin:0;padding:10px 13px;border-radius:7px;color:#fff;background:rgba(176,45,43,.88);font-size:11px;text-align:center}
 .artwork-shell{view-transition-name:music-artwork}.metadata-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px}.metadata-heading h2{margin:0}.metadata-heading span{display:flex;min-width:0;align-items:center;gap:5px;overflow:hidden;color:var(--beam);font-size:9px;text-overflow:ellipsis;white-space:nowrap}.metadata-heading span:empty{display:none}.metadata-heading .loading{color:#aaa8b1}.lyrics-heading>div{display:grid;gap:3px}.report-button{display:flex;min-height:32px;align-items:center;gap:6px;padding:0 10px;border:1px solid rgba(242,239,232,.15);border-radius:6px;color:#c8c5ce;background:transparent;font-size:10px}.report-button:disabled{opacity:.55}.lyric-line strong,.lyric-line small{display:block}.lyric-line strong{font:inherit}.lyric-line small{margin-top:3px;color:rgba(242,239,232,.34);font-size:.66em;font-weight:500}.lyric-line.active small{color:rgba(242,239,232,.66)}.lyrics-notice{position:absolute;right:0;bottom:4px;left:clamp(20px,3vw,48px);margin:0;padding:8px 10px;border-radius:6px;color:#d9d6de;background:rgba(17,19,26,.9);font-size:10px;text-align:center}.lyrics-panel{position:relative}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-@media(max-width:719px){.player-content{height:calc(100svh - 68px - env(safe-area-inset-top));grid-template-columns:1fr;grid-template-rows:auto minmax(260px,34svh) auto;gap:18px;padding:12px 22px calc(20px + env(safe-area-inset-bottom));overflow-y:auto}.record-panel{grid-column:1;grid-row:1;overflow:visible}.artwork-shell{width:min(42vw,210px);flex:none}.track-heading{margin-top:13px}.track-heading h1{font-size:19px}.track-heading p{margin-top:4px}.timeline{margin-top:12px}.transport{gap:26px;margin-top:4px}.transport .play-toggle{width:54px;height:54px}.lyrics-panel{min-height:260px;grid-column:1;grid-row:2;padding:18px 0 0;border-top:1px solid rgba(242,239,232,.12);border-left:0}.lyrics-heading{padding:0 2px 8px}.lyrics-scroller{height:34svh;padding:40% 0}.lyric-line{padding:10px 2px;font-size:15px;text-align:center;transform-origin:center}.lyric-line.active{font-size:20px}.lyrics-empty{min-height:220px}.metadata-panel{grid-column:1;grid-row:3;padding-top:12px}.metadata-panel dl{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 12px}.metadata-panel>p{display:none}}
+.metadata-toggle{display:flex;width:100%;min-height:42px;align-items:center;justify-content:space-between;gap:12px;padding:0;border:0;color:var(--ink);background:transparent;text-align:left}.metadata-toggle>span{display:flex;min-width:0;align-items:center;gap:10px}.metadata-toggle h2{margin:0}.metadata-toggle small{display:flex;min-width:0;align-items:center;gap:5px;overflow:hidden;color:var(--beam);font-size:9px;text-overflow:ellipsis;white-space:nowrap}.metadata-toggle small:empty{display:none}.metadata-toggle .loading{color:#aaa8b1}.metadata-toggle>svg{flex:0 0 auto;color:#aaa8b1;transition:transform .2s cubic-bezier(.22,1,.36,1)}.metadata-toggle>svg.expanded{transform:rotate(180deg)}.metadata-content{padding-top:10px}.metadata-content>p{display:flex;min-width:0;align-items:center;gap:6px;overflow:hidden;margin:12px 0 0;color:#aaa8b1;font-size:9px;text-overflow:ellipsis;white-space:nowrap}.metadata-content>p svg{flex:0 0 auto}.metadata-reveal-enter-active,.metadata-reveal-leave-active{transition:opacity .18s ease,transform .18s cubic-bezier(.22,1,.36,1)}.metadata-reveal-enter-from,.metadata-reveal-leave-to{opacity:0;transform:translateY(-5px)}
+@media(max-width:719px){.player-content{display:flex;height:calc(100svh - 68px - env(safe-area-inset-top));max-width:none;flex-direction:column;gap:0;padding:12px 22px calc(20px + env(safe-area-inset-bottom));overflow-x:hidden;overflow-y:auto}.record-panel{width:100%;min-height:auto;flex:0 0 auto;overflow:visible}.artwork-shell{width:min(42vw,210px);flex:none}.track-heading{margin-top:13px}.track-heading h1{font-size:19px}.track-heading p{margin-top:4px}.timeline{margin-top:12px}.transport{gap:26px;margin:7px 0 18px}.transport .play-toggle{width:54px;height:54px}.lyrics-panel{display:grid;width:100%;min-height:340px;flex:0 0 auto;grid-template-rows:auto minmax(0,1fr);padding:18px 0 0;border-top:1px solid rgba(242,239,232,.12);border-left:0}.lyrics-heading{padding:0 2px 8px}.lyrics-scroller{height:38svh;min-height:280px;padding:38% 0}.lyric-line{padding:10px 2px;font-size:15px;text-align:center;transform-origin:center}.lyric-line.active{font-size:20px}.lyrics-empty{min-height:280px}.metadata-panel{width:100%;flex:0 0 auto;margin-top:18px;padding-top:16px}.metadata-panel dl{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.metadata-panel>p{display:none}}
+@media(orientation:landscape) and (min-width:720px){.player-content{grid-template-rows:auto auto;align-content:start;align-items:start;overflow-x:hidden;overflow-y:auto}.record-panel{min-height:max-content}.metadata-panel{align-self:start}.lyrics-panel{position:sticky;top:0;height:calc(100svh - 68px - env(safe-area-inset-top) - 66px);grid-row:1/3;align-self:start}}
 @media(max-height:700px) and (min-width:720px){.player-content{padding-top:18px;padding-bottom:22px}.artwork-shell{width:min(31vh,260px)}.track-heading{margin-top:13px}.timeline{margin-top:12px}.metadata-panel{margin-top:10px;padding-top:10px}.metadata-panel>p{display:none}.lyric-line{padding-block:8px}}
 @media(prefers-reduced-motion:no-preference){.full-player{animation:player-reveal .24s cubic-bezier(.22,1,.36,1) both}.player-header{animation:player-header-reveal .3s .05s cubic-bezier(.22,1,.36,1) both}.artwork-shell{animation:artwork-reveal .42s cubic-bezier(.16,1,.3,1) both}.track-heading,.timeline,.transport,.metadata-panel{animation:details-reveal .34s .08s cubic-bezier(.22,1,.36,1) both}.lyrics-panel{animation:lyrics-reveal .38s .1s cubic-bezier(.22,1,.36,1) both}.round-button,.transport button,.lyric-line,.report-button{transition:color .2s ease,background-color .2s ease,opacity .2s ease,transform .2s cubic-bezier(.22,1,.36,1)}.round-button:active,.transport button:active,.report-button:active{transform:scale(.94)}.lyric-line.active{transform:scale(1.018)}@keyframes player-reveal{from{opacity:0}to{opacity:1}}@keyframes player-header-reveal{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}@keyframes artwork-reveal{from{opacity:.2;transform:translateY(22px) scale(.94)}to{opacity:1;transform:none}}@keyframes details-reveal{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes lyrics-reveal{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}}
-@media(prefers-reduced-motion:reduce){.lyrics-scroller{scroll-behavior:auto}}
+@media(prefers-reduced-motion:reduce){.lyrics-scroller{scroll-behavior:auto}.metadata-toggle>svg,.metadata-reveal-enter-active,.metadata-reveal-leave-active{transition:none}}
+.player-content{grid-template-rows:minmax(0,1fr)}.player-left{min-width:0;min-height:0;padding-right:4px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}.player-left::-webkit-scrollbar{display:none}.player-left .record-panel{min-height:max-content;grid-column:auto;grid-row:auto}.player-left .metadata-panel{grid-column:auto;grid-row:auto;margin-top:18px}.lyrics-panel{height:100%;grid-column:2;grid-row:1}
+.timeline input{-webkit-appearance:none;appearance:none;height:5px;border:0;border-radius:999px;outline:0;background:linear-gradient(90deg,var(--beam) 0 var(--progress),rgba(242,239,232,.2) var(--progress) 100%);cursor:pointer}.timeline input::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:transparent}.timeline input::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;margin-top:-6px;border:3px solid #f4f1ea;border-radius:50%;background:var(--beam);box-shadow:0 1px 5px rgba(0,0,0,.5)}.timeline input::-moz-range-track{height:5px;border:0;border-radius:999px;background:rgba(242,239,232,.2)}.timeline input::-moz-range-progress{height:5px;border-radius:999px;background:var(--beam)}.timeline input::-moz-range-thumb{width:12px;height:12px;border:3px solid #f4f1ea;border-radius:50%;background:var(--beam);box-shadow:0 1px 5px rgba(0,0,0,.5)}
+@media(max-width:719px){.player-left{width:100%;flex:0 0 auto;padding:0;overflow:visible}.lyrics-panel{height:auto;grid-column:auto;grid-row:auto}}
+@media(orientation:landscape) and (min-width:720px){.player-content{grid-template-rows:minmax(0,1fr);align-content:stretch;overflow:hidden}.player-left{height:100%}.lyrics-panel{position:relative;top:auto;height:100%;grid-row:1}}
 </style>

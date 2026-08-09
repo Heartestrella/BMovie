@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Check, ExternalLink, LoaderCircle, LogIn, RefreshCw, Search, Trash2, Tv2 } from '@lucide/vue'
+import { ArrowLeft, Check, ExternalLink, Import, Library, LoaderCircle, LogIn, Music2, RefreshCw, Search, Trash2, Tv2 } from '@lucide/vue'
 import { useDiscoveryStore, type BiliEpisode, type BiliSearchResult, type BiliSource } from '../stores/discovery'
 import { useMediaStore } from '../stores/media'
+import { useNeteaseStore, type NeteasePlaylist } from '../stores/netease'
 
 const route = useRoute()
 const router = useRouter()
 const discovery = useDiscoveryStore()
 const media = useMediaStore()
+const netease = useNeteaseStore()
 const resourceQuery = ref('')
 const query = ref('')
 const targetQuery = ref('')
@@ -57,6 +59,29 @@ async function unbind() {
   await discovery.logout()
   notice.value = '已解除账号绑定，弹幕缓存不会被删除'
 }
+
+async function bindNetease() {
+  busy.value = 'netease-login'; clearFeedback()
+  try { await netease.login(); notice.value = `已绑定 ${netease.account?.nickname}，读取了 ${netease.playlists.length} 个歌单` }
+  catch (reason) { pageError.value = message(reason) }
+  finally { busy.value = '' }
+}
+
+async function syncNetease() {
+  busy.value = 'netease-sync'; clearFeedback()
+  try { await netease.syncPlaylists(); notice.value = `已同步 ${netease.playlists.length} 个网易云歌单` }
+  catch (reason) { pageError.value = message(reason) }
+  finally { busy.value = '' }
+}
+
+async function importNeteasePlaylist(playlist: NeteasePlaylist) {
+  busy.value = `netease-import:${playlist.id}`; clearFeedback()
+  try { const result = await netease.importPlaylist(playlist); notice.value = `已导入《${result.name}》的 ${result.tracks.length} 首歌曲索引` }
+  catch (reason) { pageError.value = message(reason) }
+  finally { busy.value = '' }
+}
+
+function isNeteaseImported(id: number) { return netease.imported.some((item) => item.id === id) }
 
 async function findSource() {
   const value = query.value.trim()
@@ -120,7 +145,7 @@ function episodeLabel(episode: BiliEpisode) { return episode.longTitle ? `${epis
 function dateLabel(value?: number) { return value ? new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '尚未同步' }
 
 onMounted(async () => {
-  await Promise.all([discovery.load(), media.load()])
+  await Promise.all([discovery.load(), media.load(), netease.load()])
   if (discovery.connected) void discovery.verify()
   const seasonId = Number(route.query.season)
   if (seasonId) {
@@ -148,6 +173,29 @@ onMounted(async () => {
         <button class="text-button danger" @click="unbind">解除绑定</button>
       </div>
       <button v-else class="primary-button login-button" :disabled="busy === 'login'" @click="bindAccount"><LoaderCircle v-if="busy === 'login'" class="spin" :size="17" /><LogIn v-else :size="17" />绑定哔哩哔哩账号</button>
+    </section>
+
+    <section class="netease-section">
+      <div class="section-copy"><h2>网易云音乐</h2><p>从网易云官方页面登录，读取并导入你的歌单歌曲索引，账号信息和导入快照只保存在本机</p></div>
+      <div v-if="netease.account" class="account-row">
+        <img v-if="netease.account.avatarUrl" :src="netease.account.avatarUrl" alt="" />
+        <span><strong>{{ netease.account.nickname }}</strong><small>{{ netease.playlists.length }} 个歌单 · 已导入 {{ netease.imported.length }} 个 · {{ dateLabel(netease.account.syncedAt) }}</small></span>
+        <button class="secondary-button" :disabled="Boolean(busy)" @click="syncNetease"><LoaderCircle v-if="busy === 'netease-sync'" class="spin" :size="15" /><RefreshCw v-else :size="15" />同步</button>
+        <button class="text-button danger" @click="netease.logout">解除绑定</button>
+      </div>
+      <button v-else class="primary-button login-button" :disabled="busy === 'netease-login'" @click="bindNetease"><LoaderCircle v-if="busy === 'netease-login'" class="spin" :size="17" /><Music2 v-else :size="17" />绑定网易云音乐</button>
+
+      <div v-if="netease.account && netease.playlists.length" class="playlist-list">
+        <article v-for="playlist in netease.playlists" :key="playlist.id">
+          <span class="playlist-cover"><img v-if="playlist.coverImgUrl" :src="playlist.coverImgUrl" alt="" /><Library v-else :size="20" /></span>
+          <span><strong>{{ playlist.name }}</strong><small>{{ playlist.trackCount }} 首{{ playlist.creator ? ` · ${playlist.creator}` : '' }}</small></span>
+          <button class="secondary-button" :disabled="Boolean(busy)" @click="importNeteasePlaylist(playlist)">
+            <LoaderCircle v-if="busy === `netease-import:${playlist.id}`" class="spin" :size="14" /><Check v-else-if="isNeteaseImported(playlist.id)" :size="14" /><Import v-else :size="14" />
+            {{ busy === `netease-import:${playlist.id}` ? '导入中' : isNeteaseImported(playlist.id) ? '重新导入' : '导入' }}
+          </button>
+        </article>
+      </div>
+      <p v-if="netease.account" class="account-hint">已保留账号会话，后续歌曲搜索会优先使用网易云目录</p>
     </section>
 
     <section class="resource-section">
@@ -208,7 +256,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.discovery-page{max-width:1040px}.compact-header{display:flex;align-items:center;justify-content:flex-start;gap:13px}.back-button{display:grid;width:42px;height:42px;place-items:center;border:1px solid var(--line);border-radius:50%;color:var(--ink);background:transparent}.account-section,.resource-section,.danmaku-section,.bindings-section{padding:24px 0;border-top:1px solid var(--line)}.section-copy{max-width:68ch;margin-bottom:16px}.section-copy h2{margin-bottom:5px;font:700 18px/1.25 var(--font-body)}.section-copy p{color:var(--muted);font-size:12px;line-height:1.65}.account-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto auto;align-items:center;gap:12px}.account-row>img{width:48px;height:48px;border-radius:50%;object-fit:cover}.account-row>span{display:grid;gap:3px}.account-row strong{font-size:14px}.account-row small{color:var(--dim);font-size:11px}.secondary-button,.login-button{display:inline-flex;align-items:center;justify-content:center;gap:7px}.secondary-button{min-height:38px;padding:0 13px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--surface);font-size:12px;font-weight:650}.text-button{padding:8px;border:0;background:transparent;font-size:11px}.danger{color:var(--danger)}.source-search,.target-filter{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.source-search{max-width:760px;padding-left:13px}.source-search input,.target-filter input{min-width:0;flex:1;border:0;outline:0;color:var(--ink);background:transparent}.source-search input{padding:13px 10px}.source-search button{display:flex;align-items:center;justify-content:center;gap:7px;align-self:stretch;padding:0 18px;border:0;border-radius:0 7px 7px 0;color:#08090d;background:var(--ink);font-size:12px;font-weight:750;white-space:nowrap}.source-search button:disabled,.episode-list button:disabled,.secondary-button:disabled{opacity:.52}.search-results{display:grid;max-width:760px;margin-top:10px;border-top:1px solid var(--line)}.search-results button{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:11px;padding:10px 3px;border:0;border-bottom:1px solid var(--line);color:var(--ink);background:transparent;text-align:left}.search-results img{width:46px;height:62px;border-radius:5px;object-fit:cover}.search-results span{display:grid;gap:4px}.search-results strong{font-size:13px}.search-results small{overflow:hidden;color:var(--dim);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.source-panel{max-width:900px;margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.source-panel>header{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:12px;margin-bottom:15px}.source-panel>header img{width:52px;height:70px;border-radius:5px;object-fit:cover}.source-panel>header span{display:grid;gap:4px}.source-panel>header strong{font-size:16px}.source-panel>header small{color:var(--dim);font-size:11px}.target-filter{padding-left:11px;margin-bottom:8px}.target-filter input{padding:10px}.target-select{width:100%;height:42px;margin-bottom:12px;padding:0 10px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--canvas);font-size:12px}.episode-list{max-height:330px;overflow-y:auto;border-top:1px solid var(--line)}.episode-list>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.episode-list span{display:grid;min-width:0;gap:3px}.episode-list b{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.episode-list small{color:var(--dim);font-size:9px}.episode-list button{display:flex;min-height:34px;align-items:center;gap:5px;padding:0 10px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:transparent;font-size:10px}.feedback{max-width:900px;margin:12px 0;padding:11px 12px;border-radius:7px;font-size:12px}.feedback.error{color:#ff918d;background:rgba(255,113,109,.08)}.feedback.success{color:#baff82;background:rgba(157,255,101,.07)}.binding-list{max-width:900px;border-top:1px solid var(--line)}.binding-list>div{display:grid;grid-template-columns:28px minmax(0,1fr) 38px;align-items:center;gap:9px;padding:12px 2px;border-bottom:1px solid var(--line)}.binding-list span{display:grid;min-width:0;gap:3px}.binding-list strong,.binding-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.binding-list strong{font-size:12px}.binding-list small{color:var(--dim);font-size:10px}.binding-list button{display:grid;width:34px;height:34px;place-items:center;border:0;color:var(--dim);background:transparent}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-@media(max-width:640px){.account-row{grid-template-columns:44px minmax(0,1fr)}.account-row .secondary-button,.account-row .text-button{grid-row:2}.source-panel{padding:14px}.source-panel>header{grid-template-columns:44px minmax(0,1fr)}.source-panel>header img{width:44px;height:60px}.source-panel>header .secondary-button{grid-column:1/-1}.episode-list>div{align-items:start}.episode-list b{white-space:normal}}
+.discovery-page{max-width:1040px}.compact-header{display:flex;align-items:center;justify-content:flex-start;gap:13px}.back-button{display:grid;width:42px;height:42px;place-items:center;border:1px solid var(--line);border-radius:50%;color:var(--ink);background:transparent}.account-section,.netease-section,.resource-section,.danmaku-section,.bindings-section{padding:24px 0;border-top:1px solid var(--line)}.section-copy{max-width:68ch;margin-bottom:16px}.section-copy h2{margin-bottom:5px;font:700 18px/1.25 var(--font-body)}.section-copy p{color:var(--muted);font-size:12px;line-height:1.65}.account-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto auto;align-items:center;gap:12px}.account-row>img{width:48px;height:48px;border-radius:50%;object-fit:cover}.account-row>span{display:grid;gap:3px}.account-row strong{font-size:14px}.account-row small{color:var(--dim);font-size:11px}.secondary-button,.login-button{display:inline-flex;align-items:center;justify-content:center;gap:7px}.secondary-button{min-height:38px;padding:0 13px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--surface);font-size:12px;font-weight:650}.text-button{padding:8px;border:0;background:transparent;font-size:11px}.danger{color:var(--danger)}.playlist-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;margin-top:18px}.playlist-list article{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line)}.playlist-list article>span:nth-child(2){display:grid;min-width:0;gap:4px}.playlist-list strong,.playlist-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.playlist-list strong{font-size:12px}.playlist-list small,.account-hint{color:var(--dim);font-size:10px}.playlist-cover{display:grid;width:46px;height:46px;place-items:center;overflow:hidden;border-radius:6px;color:var(--beam);background:var(--surface)}.playlist-cover img{width:100%;height:100%;object-fit:cover}.account-hint{margin-top:12px}.source-search,.target-filter{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.source-search{max-width:760px;padding-left:13px}.source-search input,.target-filter input{min-width:0;flex:1;border:0;outline:0;color:var(--ink);background:transparent}.source-search input{padding:13px 10px}.source-search button{display:flex;align-items:center;justify-content:center;gap:7px;align-self:stretch;padding:0 18px;border:0;border-radius:0 7px 7px 0;color:#08090d;background:var(--ink);font-size:12px;font-weight:750;white-space:nowrap}.source-search button:disabled,.episode-list button:disabled,.secondary-button:disabled{opacity:.52}.search-results{display:grid;max-width:760px;margin-top:10px;border-top:1px solid var(--line)}.search-results button{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:11px;padding:10px 3px;border:0;border-bottom:1px solid var(--line);color:var(--ink);background:transparent;text-align:left}.search-results img{width:46px;height:62px;border-radius:5px;object-fit:cover}.search-results span{display:grid;gap:4px}.search-results strong{font-size:13px}.search-results small{overflow:hidden;color:var(--dim);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.source-panel{max-width:900px;margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.source-panel>header{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:12px;margin-bottom:15px}.source-panel>header img{width:52px;height:70px;border-radius:5px;object-fit:cover}.source-panel>header span{display:grid;gap:4px}.source-panel>header strong{font-size:16px}.source-panel>header small{color:var(--dim);font-size:11px}.target-filter{padding-left:11px;margin-bottom:8px}.target-filter input{padding:10px}.target-select{width:100%;height:42px;margin-bottom:12px;padding:0 10px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--canvas);font-size:12px}.episode-list{max-height:330px;overflow-y:auto;border-top:1px solid var(--line)}.episode-list>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.episode-list span{display:grid;min-width:0;gap:3px}.episode-list b{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.episode-list small{color:var(--dim);font-size:9px}.episode-list button{display:flex;min-height:34px;align-items:center;gap:5px;padding:0 10px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:transparent;font-size:10px}.feedback{max-width:900px;margin:12px 0;padding:11px 12px;border-radius:7px;font-size:12px}.feedback.error{color:#ff918d;background:rgba(255,113,109,.08)}.feedback.success{color:#baff82;background:rgba(157,255,101,.07)}.binding-list{max-width:900px;border-top:1px solid var(--line)}.binding-list>div{display:grid;grid-template-columns:28px minmax(0,1fr) 38px;align-items:center;gap:9px;padding:12px 2px;border-bottom:1px solid var(--line)}.binding-list span{display:grid;min-width:0;gap:3px}.binding-list strong,.binding-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.binding-list strong{font-size:12px}.binding-list small{color:var(--dim);font-size:10px}.binding-list button{display:grid;width:34px;height:34px;place-items:center;border:0;color:var(--dim);background:transparent}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:640px){.account-row{grid-template-columns:44px minmax(0,1fr)}.account-row .secondary-button{grid-row:2;grid-column:1/-1;width:100%}.account-row .text-button{grid-row:3;grid-column:1/-1;width:100%}.playlist-list{grid-template-columns:1fr}.source-panel{padding:14px}.source-panel>header{grid-template-columns:44px minmax(0,1fr)}.source-panel>header img{width:44px;height:60px}.source-panel>header .secondary-button{grid-column:1/-1}.episode-list>div{align-items:start}.episode-list b{white-space:normal}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
 </style>

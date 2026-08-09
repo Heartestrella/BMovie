@@ -3,8 +3,24 @@ import { zhCN, driverNames, fieldHelp, fieldNames } from './zh-CN'
 import { enUS } from './en-US'
 
 export type AppLocale = 'zh-CN' | 'en-US'
-export const currentLocale = ref<AppLocale>('zh-CN')
+const LOCALE_KEY = 'bmovie-interface-locale-v1'
+function initialLocale(): AppLocale {
+  const saved = localStorage.getItem(LOCALE_KEY)
+  return saved === 'en-US' || saved === 'zh-CN' ? saved : 'zh-CN'
+}
+export const currentLocale = ref<AppLocale>(initialLocale())
 const localeMessages: Record<AppLocale, Record<string, unknown>> = { 'zh-CN': zhCN, 'en-US': enUS }
+export const supportedLocales: Array<{ code: AppLocale; nativeName: string }> = [
+  { code: 'zh-CN', nativeName: '简体中文' },
+  { code: 'en-US', nativeName: 'English' },
+]
+document.documentElement.lang = currentLocale.value
+
+export function setLocale(locale: AppLocale) {
+  currentLocale.value = locale
+  localStorage.setItem(LOCALE_KEY, locale)
+  document.documentElement.lang = locale
+}
 
 function lookup(source: Record<string, unknown>, key: string): unknown {
   return key.split('.').reduce<unknown>((node, part) => node && typeof node === 'object' ? (node as Record<string, unknown>)[part] : undefined, source)

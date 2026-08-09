@@ -118,6 +118,7 @@ export const useMusicPlayerStore = defineStore('music-player', () => {
   }
 
   async function playbackUrl(item: MediaItem) {
+    if (item.streamUrl) return item.streamUrl
     const offline = useOfflineCacheStore()
     const cached = offline.entryForPath(item.path)
     let url = cached?.status === 'completed' ? cached.internalUri || cached.uri || '' : ''
@@ -244,10 +245,18 @@ export const useMusicPlayerStore = defineStore('music-player', () => {
     updateMediaSession()
   }
 
-  function toggle() {
+  async function toggle() {
     if (!current.value) return
     if (nativePlayback) {
-      void (playing.value ? NativeMusicPlayback.pause() : NativeMusicPlayback.play())
+      const shouldPlay = !playing.value
+      playing.value = shouldPlay
+      try {
+        if (shouldPlay) await NativeMusicPlayback.play()
+        else await NativeMusicPlayback.pause()
+      } catch (reason) {
+        playing.value = !shouldPlay
+        error.value = reason instanceof Error ? reason.message : String(reason)
+      }
       return
     }
     if (!audio) return
@@ -313,7 +322,7 @@ export const useMusicPlayerStore = defineStore('music-player', () => {
 
   async function saveProgress() {
     const item = current.value
-    if (!item || !duration.value) return
+    if (!item || !duration.value || item.streamProvider === 'netease' || item.path.startsWith('netease://')) return
     lastSavedAt = Date.now()
     const savedPosition = duration.value - position.value <= 2 ? 0 : position.value
     await useMediaStore().updateProgress(item.path, item.title, savedPosition, duration.value)

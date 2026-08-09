@@ -94,7 +94,7 @@ onMounted(async () => {
   if (!sources.enabledSources.length && sources.needsRescan) {
     await media.commitScan([])
     await sources.markScanned()
-  } else if (sources.enabledSources.length && (!media.items.length || sources.needsRescan || media.items.some((item) => (item.metadataVersion ?? 0) < METADATA_VERSION || item.metadataLocale !== metadataLocale))) {
+  } else if (sources.enabledSources.length && (!media.items.length || sources.needsRescan || media.items.some((item) => item.category !== 'music' && ((item.metadataVersion ?? 0) < METADATA_VERSION || item.metadataLocale !== metadataLocale)))) {
     void scanner.start()
   }
 })

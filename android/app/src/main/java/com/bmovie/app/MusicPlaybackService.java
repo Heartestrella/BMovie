@@ -214,7 +214,7 @@ public class MusicPlaybackService extends MediaSessionService {
         if (duration == C.TIME_UNSET || duration < 0) duration = 0;
         MediaItem current = player.getCurrentMediaItem();
         latestSnapshot = new PlaybackSnapshot(
-            player.isPlaying(),
+            player.getPlayWhenReady(),
             player.getCurrentMediaItemIndex(),
             Math.max(0, player.getCurrentPosition()),
             duration,

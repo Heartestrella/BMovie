@@ -40,7 +40,7 @@ async function ensureLibraryScan() {
   }
   const settings = await loadMetadataSettings()
   const locale = resolveMetadataLocale(settings)
-  const stale = media.items.some((item) => (item.metadataVersion ?? 0) < METADATA_VERSION || item.metadataLocale !== locale || item.indexVersion !== MEDIA_INDEX_VERSION)
+  const stale = media.items.some((item) => item.category !== 'music' && ((item.metadataVersion ?? 0) < METADATA_VERSION || item.metadataLocale !== locale || item.indexVersion !== MEDIA_INDEX_VERSION))
   if (!media.items.length || sources.needsRescan || stale) void scanner.start()
 }
 
@@ -63,13 +63,13 @@ onUnmounted(() => {
   stopArtworkPrefetch()
 })
 
-const tabs = [
+const tabs = computed(() => [
   { to: '/', label: t('nav.home'), icon: House },
   { to: '/library', label: t('nav.library'), icon: Clapperboard },
   { to: '/music', label: t('nav.music'), icon: Music2 },
   { to: '/files', label: t('nav.files'), icon: Folder },
   { to: '/settings', label: t('nav.settings'), icon: Settings },
-]
+])
 </script>
 
 <template>

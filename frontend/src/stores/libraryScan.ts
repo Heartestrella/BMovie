@@ -4,7 +4,7 @@ import { useLibrarySourcesStore } from './librarySources'
 import { MEDIA_INDEX_VERSION, useMediaStore, type MediaItem, type SidecarSubtitle } from './media'
 import { useOpenListStore } from './openlist'
 import { openListRequest, type OpenListFile } from '../services/openlist'
-import { loadMetadataSettings, matchMetadataGroup, METADATA_VERSION, resolveMetadataLocale } from '../services/metadata'
+import { loadMetadataSettings, matchMetadataGroup, METADATA_VERSION, resolveMetadataLocale, type MetadataSettings } from '../services/metadata'
 
 type ScanStage = 'idle' | 'preparing' | 'indexing' | 'metadata' | 'saving'
 
@@ -156,7 +156,7 @@ export const useLibraryScanStore = defineStore('library-scan', () => {
               duration: old?.duration,
               lastPlayed: old?.lastPlayed,
             }
-            draft.push(canReuseMetadata(old, metadataLocale) ? {
+            draft.push(canReuseMetadata(old, metadataLocale, settings) ? {
               ...old!,
               path: base.path,
               size: base.size,
@@ -316,8 +316,13 @@ function looksLikeEpisode(value: string) {
     || /\[\d{1,3}\]/.test(value)
 }
 
-function canReuseMetadata(item: MediaItem | undefined, locale: string) {
-  return Boolean(item && item.category !== 'pending' && (item.metadataVersion ?? 0) >= METADATA_VERSION && item.metadataLocale === locale)
+function canReuseMetadata(item: MediaItem | undefined, locale: string, settings: MetadataSettings) {
+  if (!item || item.category === 'pending' || (item.metadataVersion ?? 0) < METADATA_VERSION || item.metadataLocale !== locale) return false
+  if (item.metadataProvider === 'tmdb') return true
+  const tmdbAvailable = settings.tmdbEnabled && Boolean(settings.tmdbToken.trim())
+  if (item.metadataProvider === 'bangumi') return settings.bangumiEnabled && !tmdbAvailable
+  if (item.metadataProvider === 'tvmaze') return settings.tvmazeEnabled && !tmdbAvailable && !settings.bangumiEnabled
+  return false
 }
 
 function cloneItems(items: MediaItem[]) {

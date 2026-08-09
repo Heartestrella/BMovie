@@ -42,6 +42,7 @@ public class CloudAuthActivity extends AppCompatActivity {
     private static final String PROVIDER_BAIDU = "baidu";
     private static final String PROVIDER_ALIYUN = "aliyun";
     private static final String PROVIDER_BILIBILI = "bilibili";
+    private static final String PROVIDER_NETEASE = "netease";
 
     private WebView webView;
     private TextView statusView;
@@ -50,7 +51,7 @@ public class CloudAuthActivity extends AppCompatActivity {
     private boolean completed;
 
     public static boolean isSupportedProvider(String provider) {
-        return PROVIDER_QUARK.equals(provider) || PROVIDER_BAIDU.equals(provider) || PROVIDER_ALIYUN.equals(provider) || PROVIDER_BILIBILI.equals(provider);
+        return PROVIDER_QUARK.equals(provider) || PROVIDER_BAIDU.equals(provider) || PROVIDER_ALIYUN.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider);
     }
 
     @Override
@@ -70,6 +71,9 @@ public class CloudAuthActivity extends AppCompatActivity {
         } else if (PROVIDER_BILIBILI.equals(provider)) {
             statusView.setText("请在哔哩哔哩官方页面登录，检测到账号后会自动返回");
             webView.loadUrl("https://passport.bilibili.com/login");
+        } else if (PROVIDER_NETEASE.equals(provider)) {
+            statusView.setText("请在网易云音乐官方页面登录，检测到账号后会自动返回");
+            webView.loadUrl("https://music.163.com/#/login");
         } else {
             statusView.setText("正在打开官方授权页面…");
             requestOfficialAuthorizationUrl();
@@ -95,7 +99,7 @@ public class CloudAuthActivity extends AppCompatActivity {
         toolbar.addView(close, new LinearLayout.LayoutParams(dp(72), dp(48)));
 
         TextView title = new TextView(this);
-        title.setText(PROVIDER_QUARK.equals(provider) ? "登录夸克网盘" : PROVIDER_BILIBILI.equals(provider) ? "绑定哔哩哔哩" : PROVIDER_BAIDU.equals(provider) ? "授权百度网盘" : "授权阿里云盘");
+        title.setText(PROVIDER_QUARK.equals(provider) ? "登录夸克网盘" : PROVIDER_BILIBILI.equals(provider) ? "绑定哔哩哔哩" : PROVIDER_NETEASE.equals(provider) ? "绑定网易云音乐" : PROVIDER_BAIDU.equals(provider) ? "授权百度网盘" : "授权阿里云盘");
         title.setTextColor(Color.WHITE);
         title.setTextSize(16);
         title.setGravity(Gravity.CENTER);
@@ -103,13 +107,14 @@ public class CloudAuthActivity extends AppCompatActivity {
         toolbar.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
 
         Button done = new Button(this);
-        done.setText(PROVIDER_QUARK.equals(provider) || PROVIDER_BILIBILI.equals(provider) ? "完成" : "");
+        done.setText(PROVIDER_QUARK.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider) ? "完成" : "");
         done.setTextColor(Color.rgb(155, 145, 255));
         done.setTextSize(13);
         done.setBackgroundColor(Color.TRANSPARENT);
-        done.setEnabled(PROVIDER_QUARK.equals(provider) || PROVIDER_BILIBILI.equals(provider));
+        done.setEnabled(PROVIDER_QUARK.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider));
         done.setOnClickListener(view -> {
             if (PROVIDER_BILIBILI.equals(provider)) captureBilibiliCookie(true);
+            else if (PROVIDER_NETEASE.equals(provider)) captureNeteaseCookie(true);
             else captureQuarkCookie(true);
         });
         toolbar.addView(done, new LinearLayout.LayoutParams(dp(72), dp(48)));
@@ -175,6 +180,8 @@ public class CloudAuthActivity extends AppCompatActivity {
                     captureQuarkCookie(false);
                 } else if (PROVIDER_BILIBILI.equals(provider)) {
                     captureBilibiliCookie(false);
+                } else if (PROVIDER_NETEASE.equals(provider)) {
+                    captureNeteaseCookie(false);
                 } else {
                     inspectCallback(url);
                     view.evaluateJavascript("(function(){var e=document.getElementById('refresh-token');return e&&e.value?e.value:''})()", value -> {
@@ -268,6 +275,20 @@ public class CloudAuthActivity extends AppCompatActivity {
             finishWithCredential(cookie, "cookie");
         } else if (showError) {
             statusView.setText("还没有检测到有效账号，请先完成哔哩哔哩登录");
+        }
+    }
+
+    private void captureNeteaseCookie(boolean showError) {
+        if (completed || !PROVIDER_NETEASE.equals(provider)) return;
+        CookieManager.getInstance().flush();
+        String cookie = mergeCookies(
+            CookieManager.getInstance().getCookie("https://music.163.com/"),
+            CookieManager.getInstance().getCookie("https://interface.music.163.com/")
+        );
+        if (cookie.contains("MUSIC_U=")) {
+            finishWithCredential(cookie, "cookie");
+        } else if (showError) {
+            statusView.setText("还没有检测到有效账号，请先完成网易云音乐登录");
         }
     }
 

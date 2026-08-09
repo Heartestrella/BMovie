@@ -1,9 +1,15 @@
 export const zhCN = {
   localeName: '简体中文',
   nav: { home: '首页', library: '媒体库', music: '音乐', files: '文件', settings: '设置', main: '主导航' },
+  settings: {
+    languageGroup: '语言', interfaceLanguage: '界面语言', languageDescription: '选择 BMovie 的菜单、按钮和提示文字所使用的语言', back: '返回设置', metadataLanguageNote: '影片标题和简介的语言可在元数据来源中单独设置',
+    sourcesGroup: '内容来源', storage: '网盘存储', storageDetail: '添加和管理', library: '媒体资源库', libraryDetail: '自定义扫描目录', metadata: '元数据来源', metadataDetail: '语言、Bangumi、TMDB、TVmaze', discovery: '找资源', discoveryDetail: 'B站追番、弹幕抓取与绑定',
+    playbackGroup: '播放', defaultPlayer: '默认播放器', externalPlayer: '系统外部播放器', internalPlayer: 'BMovie 内置播放器', cache: '缓存管理', downloading: '{count} 项下载中', noCache: '暂无缓存',
+    aboutGroup: '关于', onboarding: '新手引导', onboardingDetail: '重新查看推荐配置', about: '关于 BMovie', version: '版本 {version}',
+  },
   music: {
     title: '音乐', rescan: '重新扫描', scanning: '正在查找音乐', scanPreparing: '准备扫描媒体目录…',
-    discovered: '已发现 {count} 个媒体文件', search: '搜索专辑、歌曲或艺术家', albums: '专辑',
+    discovered: '已发现 {count} 个媒体文件', search: '搜索专辑、歌曲或艺术家', albums: '专辑', albumsAndPlaylists: '专辑与歌单', collectionSummary: '共 {count} 个', loadMore: '加载更多', neteaseSource: '网易云音乐', neteasePlaylist: '网易云歌单', neteasePlaylists: '网易云歌单', playlistSummary: '{playlists} 个歌单 · {songs} 首', matchedTracks: '已匹配媒体库中的 {matched} / {total} 首', managePlaylists: '管理导入', libraryPlayable: '媒体库可播放', catalogOnly: '仅歌单记录', neteaseStreaming: '网易云播放', neteaseUnavailable: '网易云没有返回可播放地址，可能受版权、会员等级或地区限制',
     albumSummary: '{albums} 张 · {songs} 首', songCount: '{count} 首', queueCount: '{count} 首队列',
     seconds: '{count} 秒', minutes: '{count} 分钟', hoursMinutes: '{hours} 小时 {minutes} 分钟',
     unknownAlbum: '未知专辑', unknownArtist: '未知艺术家', multipleArtists: '多位艺术家',
@@ -12,7 +18,7 @@ export const zhCN = {
     configureFolder: '配置媒体目录', building: '正在建立音乐库', buildingBody: '发现歌曲后会立即显示',
     empty: '没有找到音乐', formats: '支持 MP3、FLAC、M4A、AAC、OGG、Opus、WAV、APE、ALAC 等格式',
     player: '音乐播放器', previous: '上一首', play: '播放', pause: '暂停', next: '下一首', progress: '播放进度', queue: '打开播放队列',
-    openFullPlayer: '打开全屏播放器', backToMusic: '返回音乐库', lyrics: '歌词', trackInfo: '歌曲信息',
+    openFullPlayer: '打开全屏播放器', backToMusic: '返回音乐库', lyrics: '歌词', trackInfo: '歌曲信息', expandTrackInfo: '展开歌曲信息', collapseTrackInfo: '收起歌曲信息',
     artist: '艺术家', album: '专辑', format: '格式', fileSize: '文件大小', duration: '时长', track: '音轨', source: '来源路径',
     bitrate: '码率', sampleRate: '采样率', bitDepth: '位深', channels: '声道', mono: '单声道', stereo: '立体声', channelCount: '{count} 声道',
     onlineMatching: '正在联网匹配歌曲信息…', onlineMatched: '网易云音乐匹配', localLyrics: '本地歌词', onlineLyrics: '网易云歌词',
