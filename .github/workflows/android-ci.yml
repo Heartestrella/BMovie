@@ -52,8 +52,8 @@ jobs:
       - name: Build web app
         run: pnpm build
 
-      - name: Copy web assets to Android
-        run: pnpm exec cap copy android
+      - name: Sync web assets and Capacitor plugins
+        run: pnpm exec cap sync android
 
       - name: Build Android APK
         working-directory: android
