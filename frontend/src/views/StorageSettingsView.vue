@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ArrowLeft, Check, Cloud, LoaderCircle, Plus, Trash2, X } from '@lucide/vue'
+import { ArrowLeft, Check, Cloud, LoaderCircle, LogIn, Plus, ShieldCheck, Trash2, X } from '@lucide/vue'
+import { Capacitor } from '@capacitor/core'
 import { useRouter } from 'vue-router'
 import { useOpenListStore } from '../stores/openlist'
 import { openListGet, openListRequest } from '../services/openlist'
+import { CloudAuth, type CloudAuthProvider } from '../services/cloudAuth'
 import { driverLabel, fieldLabel, helpLabel, optionLabel, statusLabel, t } from '../i18n'
 
 interface DriverField {
@@ -30,6 +32,8 @@ const form = reactive<Record<string, string | boolean>>({})
 const adding = ref(false)
 const loading = ref(true)
 const saving = ref(false)
+const authenticating = ref(false)
+const authSucceeded = ref(false)
 const error = ref('')
 
 const popular = ['AliyundriveOpen', 'Quark', '115 Cloud', 'BaiduNetdisk', 'Onedrive', 'GoogleDrive', 'WebDav', 'Local', 'S3']
@@ -39,6 +43,19 @@ const driverNames = computed(() => Object.keys(drivers.value).sort((a, b) => {
 }))
 const definition = computed(() => drivers.value[selectedDriver.value])
 const credentialPattern = /(?:user(?:name)?|password|passcode|cookie|token|secret|client_?id|client_?secret|share_code|receive_code|authorization)/i
+interface AuthConfig { provider: CloudAuthProvider; targetField: 'cookie' | 'refresh_token'; title: string; description: string }
+const authConfig = computed<AuthConfig | undefined>(() => {
+  if (selectedDriver.value === 'Quark') return {
+    provider: 'quark', targetField: 'cookie', title: t('storage.authQuark'), description: t('storage.authQuarkNote'),
+  }
+  if (selectedDriver.value === 'BaiduNetdisk') return {
+    provider: 'baidu', targetField: 'refresh_token', title: t('storage.authBaidu'), description: t('storage.authOAuthNote'),
+  }
+  if (selectedDriver.value === 'AliyundriveOpen') return {
+    provider: 'aliyun', targetField: 'refresh_token', title: t('storage.authAliyun'), description: t('storage.authOAuthNote'),
+  }
+  return undefined
+})
 
 function needsInput(field: DriverField) {
   return field.required && field.type !== 'bool' && !String(field.default ?? '').trim()
@@ -52,7 +69,7 @@ const basicFields = computed(() => {
 })
 const driverFields = computed(() => {
   if (!definition.value) return []
-  return definition.value.additional.filter((field) => needsInput(field) || isCredential(field))
+  return definition.value.additional.filter((field) => field.name !== authConfig.value?.targetField && (needsInput(field) || isCredential(field)))
 })
 const advancedFields = computed(() => {
   if (!definition.value) return []
@@ -68,6 +85,7 @@ function resetForm() {
   if (!definition.value) return
   for (const field of [...definition.value.common, ...definition.value.additional]) form[field.name] = initialValue(field)
   form.mount_path = form.mount_path || `/${driverLabel(selectedDriver.value).replace(/[（）/]/g, '')}`
+  authSucceeded.value = false
 }
 watch(selectedDriver, resetForm)
 
@@ -114,6 +132,27 @@ async function createStorage() {
   finally { saving.value = false }
 }
 
+async function startCloudAuth() {
+  if (!authConfig.value) return
+  error.value = ''
+  authSucceeded.value = false
+  if (!Capacitor.isNativePlatform()) {
+    error.value = t('storage.authAndroidOnly')
+    return
+  }
+  authenticating.value = true
+  try {
+    const config = authConfig.value
+    const result = await CloudAuth.login({ provider: config.provider })
+    form[config.targetField] = result.credential
+    if (config.targetField === 'refresh_token') form.use_online_api = true
+    authSucceeded.value = true
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    if (!message.includes('已取消登录')) error.value = message
+  } finally { authenticating.value = false }
+}
+
 async function removeStorage(item: StorageItem) {
   if (!confirm(t('storage.deleteConfirm', { path: item.mount_path }))) return
   try {
@@ -136,7 +175,15 @@ onMounted(load)
     <form v-else-if="adding" class="storage-form" @submit.prevent="createStorage">
       <div class="form-heading"><h2>{{ t('storage.addStorage') }}</h2><button type="button" class="icon-button" :aria-label="t('storage.cancel')" @click="adding = false"><X :size="18" /></button></div>
       <label class="field"><span>{{ t('storage.driver') }}</span><select v-model="selectedDriver"><option v-for="name in driverNames" :key="name" :value="name">{{ driverLabel(name) }}</option></select></label>
-      <p v-if="definition?.config.alert" class="field-help">此存储类型有额外使用要求，请在填写前确认对应服务商的授权方式。</p>
+      <p v-if="definition?.config.alert" class="field-help">此存储类型有额外使用要求，请在填写前确认对应服务商的授权方式</p>
+      <section v-if="authConfig" class="auth-panel">
+        <span class="auth-mark"><ShieldCheck :size="21" /></span>
+        <div><strong>{{ authConfig.title }}</strong><p>{{ authConfig.description }}</p><small v-if="authSucceeded"><Check :size="13" />{{ t('storage.authReady') }}</small></div>
+        <button type="button" class="auth-button" :disabled="authenticating" @click="startCloudAuth">
+          <LoaderCircle v-if="authenticating" class="spin" :size="16" /><LogIn v-else :size="16" />
+          {{ authenticating ? t('storage.authorizing') : authSucceeded ? t('storage.reauthorize') : t('storage.authorize') }}
+        </button>
+      </section>
       <label v-for="field in basicFields" :key="`basic-${field.name}`" class="field">
         <span>{{ fieldLabel(field.name) }}</span>
         <input v-if="field.type === 'bool'" v-model="form[field.name]" type="checkbox" />
@@ -162,7 +209,7 @@ onMounted(load)
             <input v-if="field.type === 'bool'" v-model="form[field.name]" type="checkbox" />
             <select v-else-if="field.type === 'select'" :value="String(form[field.name] ?? '')" @change="form[field.name] = ($event.target as HTMLSelectElement).value"><option v-for="option in field.options.split(',')" :key="option" :value="option">{{ optionLabel(option) }}</option></select>
             <textarea v-else-if="field.type === 'text'" :value="String(form[field.name] ?? '')" rows="3" @input="form[field.name] = ($event.target as HTMLTextAreaElement).value" />
-            <input v-else v-model="form[field.name]" :type="field.type === 'number' || field.type === 'float' ? 'number' : 'text'" />
+            <input v-else v-model="form[field.name]" :type="field.type === 'number' || field.type === 'float' ? 'number' : /password|token|secret|cookie/i.test(field.name) ? 'password' : 'text'" />
             <small v-if="helpLabel(field.name, field.help)">{{ helpLabel(field.name, field.help) }}</small>
           </label>
         </div>
@@ -178,4 +225,5 @@ onMounted(load)
 
 <style scoped>
 .title-row { display: flex; align-items: center; gap: 14px; }.title-row .icon-button { margin-top: 3px; }.error-banner { padding: 12px 14px; border: 1px solid rgba(255,113,109,.35); border-radius: 7px; color: var(--danger); background: rgba(255,113,109,.08); }.storage-form { max-width: 680px; }.form-heading { display: flex; align-items: center; justify-content: space-between; }.driver-heading { margin: 26px 0 16px; padding-top: 22px; border-top: 1px solid var(--line); }.field { display: grid; gap: 7px; margin-bottom: 16px; }.field > span { font-size: 13px; font-weight: 650; }.field input:not([type=checkbox]),.field select,.field textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface); }.field input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--beam); }.field small,.field-help { color: var(--dim); font-size: 11px; line-height: 1.5; }.advanced-settings { margin: 24px 0 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }.advanced-settings summary { padding: 16px 2px; color: var(--ink); font-size: 14px; font-weight: 650; cursor: pointer; }.advanced-settings summary small { margin-left: 6px; color: var(--dim); font-weight: 400; }.advanced-content { padding-top: 8px; }.save { margin: 10px 0 30px; }.storage-list { display: grid; gap: 10px; }.storage-card { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }.storage-card div { display: grid; gap: 4px; }.storage-card small { color: var(--muted); }.delete { display: grid; width: 40px; height: 40px; place-items: center; border: 0; color: var(--danger); background: transparent; }.spin { margin: 0 auto 12px; animation: spin 1s linear infinite; }@keyframes spin { to { transform: rotate(360deg); } }
+.auth-panel{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:13px;margin:4px 0 18px;padding:15px;border:1px solid color-mix(in srgb,var(--beam) 35%,var(--line));border-radius:8px;background:color-mix(in srgb,var(--beam-soft) 55%,var(--surface))}.auth-mark{display:grid;width:38px;height:38px;place-items:center;border-radius:50%;color:var(--beam);background:var(--surface-raised)}.auth-panel>div{display:grid;min-width:0;gap:4px}.auth-panel strong{font-size:13px}.auth-panel p{margin:0;color:var(--dim);font-size:11px;line-height:1.5}.auth-panel small{display:flex;align-items:center;gap:4px;color:#82d9a5;font-size:11px}.auth-button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:0 13px;border:1px solid var(--beam);border-radius:7px;color:var(--ink);background:var(--beam-soft);font-size:12px;font-weight:650}.auth-button:disabled{opacity:.6}.auth-button .spin{margin:0}@media(max-width:520px){.auth-panel{grid-template-columns:auto 1fr}.auth-button{grid-column:1/-1;width:100%}}
 </style>

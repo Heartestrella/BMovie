@@ -235,6 +235,7 @@ function metadataQueries(item: MediaItem, parsed: ParsedFilename) {
     if (!query || /^\d+$/.test(query) || /^(?:movies?|tv|series|anime|电影|剧集|动漫|视频)$/i.test(query)) return
     if (!queries.some((entry) => normalized(entry) === normalized(query))) queries.push(query)
   }
+  add(item.indexTitle)
   add(parsed.query)
   const folders = (item.folderPath ?? item.path.slice(0, item.path.lastIndexOf('/'))).split('/').filter(Boolean)
   for (const folder of folders.slice(-2).reverse()) add(parseFilename(folder).query || folder)

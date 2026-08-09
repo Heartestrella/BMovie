@@ -11,6 +11,7 @@ export const useOpenListStore = defineStore('openlist', () => {
   const baseUrl = ref('http://127.0.0.1:5244')
   const error = ref('')
   const token = ref('')
+  let startRequest: Promise<void> | undefined
 
   async function login(password: string) {
     const data = await openListRequest<{ token: string }>(baseUrl.value, '/api/auth/login', {
@@ -53,22 +54,28 @@ export const useOpenListStore = defineStore('openlist', () => {
     return false
   }
 
-  async function start() {
-    if (state.value === 'ready' || state.value === 'starting') return
+  function start() {
+    if (state.value === 'ready') return Promise.resolve()
+    if (startRequest) return startRequest
     error.value = ''
     state.value = 'starting'
-    try {
-      if (isNativePlatform()) {
-        const status = await OpenList.start()
-        baseUrl.value = status.baseUrl
+    startRequest = (async () => {
+      try {
+        if (isNativePlatform()) {
+          const status = await OpenList.start()
+          baseUrl.value = status.baseUrl
+        }
+        if (!(await waitUntilReady())) throw new Error('服务启动超时')
+        await authenticate()
+        state.value = 'ready'
+      } catch (e) {
+        state.value = 'error'
+        error.value = e instanceof Error ? e.message : String(e)
+      } finally {
+        startRequest = undefined
       }
-      if (!(await waitUntilReady())) throw new Error('服务启动超时')
-      await authenticate()
-      state.value = 'ready'
-    } catch (e) {
-      state.value = 'error'
-      error.value = e instanceof Error ? e.message : String(e)
-    }
+    })()
+    return startRequest
   }
 
   async function stop() {

@@ -52,8 +52,8 @@ onMounted(() => media.load())
 
     <section class="start-panel">
       <p class="panel-kicker">{{ media.items.length ? `媒体库已有 ${media.works.length} 部作品` : '媒体库尚未连接' }}</p>
-      <h2>{{ media.items.length ? '你的私人放映厅已经准备好了。' : '把分散的网盘，变成一间放映厅。' }}</h2>
-      <p>{{ media.items.length ? '浏览媒体库、搜索影片，或从上方继续上次的观看。' : '添加 OpenList 存储后，BMovie 会整理目录、识别影片并在这里生成海报墙。' }}</p>
+      <h2>{{ media.items.length ? '你的私人放映厅已经准备好了' : '把分散的网盘，变成一间放映厅' }}</h2>
+      <p>{{ media.items.length ? '浏览媒体库、搜索影片，或从上方继续上次的观看' : '添加 OpenList 存储后，BMovie 会整理目录、识别影片并在这里生成海报墙' }}</p>
       <RouterLink :to="media.items.length ? '/library' : '/settings/storage'" class="primary-button">{{ media.items.length ? '打开媒体库' : '开始连接' }}</RouterLink>
     </section>
   </section>

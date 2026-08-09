@@ -20,7 +20,7 @@ export function driverLabel(name: string): string { return driverNames[name] ?? 
 export function fieldLabel(name: string): string { return fieldNames[name] ?? `自定义参数（${name}）` }
 export function helpLabel(name: string, help = ''): string {
   if (fieldHelp[name]) return fieldHelp[name]
-  if (/one of.+required/i.test(help)) return '以下授权方式任选其一填写即可。'
+  if (/one of.+required/i.test(help)) return '以下授权方式任选其一填写即可'
   return help ? t('storage.customFieldHelp') : ''
 }
 export function optionLabel(value: string): string { return t(`option.${value || 'default'}`) === `option.${value || 'default'}` ? value || t('option.default') : t(`option.${value || 'default'}`) }

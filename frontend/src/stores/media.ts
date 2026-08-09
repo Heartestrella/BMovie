@@ -18,7 +18,7 @@ export interface MediaItem {
   tagline?: string
   year?: string
   releaseDate?: string
-  category?: 'pending' | 'movie' | 'tv' | 'other'
+  category?: 'pending' | 'movie' | 'tv' | 'music' | 'other'
   metadataProvider?: 'tmdb' | 'bangumi' | 'tvmaze'
   metadataId?: number
   metadataLocale?: string
@@ -43,7 +43,23 @@ export interface MediaItem {
   episodeImage?: string
   airdate?: string
   subtitles?: SidecarSubtitle[]
+  artist?: string
+  artists?: string[]
+  album?: string
+  albumArtist?: string
+  trackNumber?: number
+  discNumber?: number
+  artworkPath?: string
+  lyricsPath?: string
+  musicMetadataProvider?: 'netease'
+  musicMetadataId?: number
+  musicMetadataFetchedAt?: number
+  musicMetadataVersion?: number
+  musicArtwork?: string
   metadataVersion?: number
+  indexVersion?: number
+  indexTitle?: string
+  indexKind?: 'series' | 'movie'
 }
 
 export interface MediaCastMember {
@@ -64,6 +80,16 @@ export interface MediaSeason {
   folderPath: string
   folderName: string
   number?: number
+  items: MediaItem[]
+  sources: MediaSource[]
+}
+
+export interface MediaSource {
+  id: string
+  label: string
+  folderPath: string
+  folderName: string
+  libraryRoot?: string
   items: MediaItem[]
 }
 
@@ -96,17 +122,21 @@ export interface MediaWork {
   items: MediaItem[]
   seasons: MediaSeason[]
   lastPlayed?: number
+  indexKind?: 'series' | 'movie'
 }
 
 const STORAGE_KEY = 'bmovie-media-library'
+export const MEDIA_INDEX_VERSION = 2
 
 export const useMediaStore = defineStore('media', () => {
   const items = ref<MediaItem[]>([])
   const loaded = ref(false)
   const recent = computed(() => items.value.filter((item) => item.lastPlayed).sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0)))
+  const musicItems = computed(() => items.value.filter((item) => item.category === 'music'))
   const works = computed<MediaWork[]>(() => {
     const grouped = new Map<string, MediaItem[]>()
     for (const item of items.value) {
+      if (item.category === 'music') continue
       const identity = workIdentity(item)
       const group = grouped.get(identity) ?? []
       group.push(item)
@@ -115,13 +145,17 @@ export const useMediaStore = defineStore('media', () => {
     return [...grouped.entries()].map(([identity, group]) => {
       const primary = group.find((item) => item.poster || item.overview) ?? group.find((item) => item.thumb) ?? group[0]
       const sorted = [...group].sort(compareEpisodes)
-      const category = primary.category ?? 'other'
+      const category = primary.category === 'music' ? 'other' : primary.category ?? 'other'
       const folderName = (primary.folderPath ?? parentPath(primary.path)).split('/').filter(Boolean).at(-1)
+      const indexKind = group.find((item) => item.indexKind)?.indexKind
       return {
         id: `w${hashIdentity(identity)}`,
         identity,
-        title: category === 'other' && group.length > 1 ? folderName || primary.title : primary.title,
+        title: category === 'pending'
+          ? primary.indexTitle || folderName || primary.title
+          : category === 'other' ? primary.indexTitle || (group.length > 1 ? folderName : undefined) || primary.title : primary.title,
         category,
+        indexKind,
         poster: primary.poster,
         thumbnail: group.find((item) => item.thumb)?.thumb,
         backdrop: group.find((item) => item.backdrop)?.backdrop || group.find((item) => item.episodeImage)?.episodeImage,
@@ -130,8 +164,8 @@ export const useMediaStore = defineStore('media', () => {
         tagline: primary.tagline,
         year: primary.year,
         releaseDate: primary.releaseDate,
-        rating: primary.rating,
-        voteCount: primary.voteCount,
+        rating: group.find((item) => Number.isFinite(item.rating) && (item.rating ?? 0) > 0)?.rating,
+        voteCount: group.find((item) => Number.isFinite(item.voteCount) && (item.voteCount ?? 0) > 0)?.voteCount,
         genres: primary.genres ?? [],
         directors: primary.directors ?? [],
         writers: primary.writers ?? [],
@@ -202,7 +236,23 @@ export const useMediaStore = defineStore('media', () => {
     item.lastPlayed = Date.now()
     await save()
   }
-  return { items, works, recent, recentWorks, loaded, load, previewScan, commitScan, updateProgress }
+  async function updateMusicMetadata(path: string, metadata: Partial<MediaItem>) {
+    const item = items.value.find((entry) => entry.path === path)
+    if (!item) return
+    Object.assign(item, metadata)
+    await save()
+  }
+  async function updateMusicMetadataBatch(updates: Array<{ path: string; metadata: Partial<MediaItem> }>) {
+    let changed = false
+    for (const update of updates) {
+      const item = items.value.find((entry) => entry.path === update.path)
+      if (!item) continue
+      Object.assign(item, update.metadata)
+      changed = true
+    }
+    if (changed) await save()
+  }
+  return { items, works, musicItems, recent, recentWorks, loaded, load, previewScan, commitScan, updateProgress, updateMusicMetadata, updateMusicMetadataBatch }
 })
 
 function workIdentity(item: MediaItem) {
@@ -240,32 +290,111 @@ function buildSeasons(items: MediaItem[]): MediaSeason[] {
     group.push(item)
     folders.set(folderPath, group)
   }
-  const groups = [...folders.entries()].map(([folderPath, group]) => {
+  const folderSources = [...folders.entries()].map(([folderPath, group]) => {
     const folderName = folderPath.split('/').filter(Boolean).at(-1) ?? folderPath
     const explicitNumber = inferSeasonNumber(folderName)
     const itemNumbers = [...new Set(group.map((item) => item.season).filter((value): value is number => Boolean(value)))]
     return {
-      id: `s${hashIdentity(folderPath)}`,
-      folderPath,
-      folderName,
       number: explicitNumber ?? (itemNumbers.length === 1 ? itemNumbers[0] : undefined),
-      items: [...group].sort(compareEpisodes),
+      source: {
+        id: `source-${hashIdentity(folderPath)}`,
+        label: sourceLabel(group[0], folderName),
+        folderPath,
+        folderName,
+        libraryRoot: group[0]?.libraryRoot,
+        items: [...group].sort(compareEpisodes),
+      } satisfies MediaSource,
     }
   }).sort((a, b) => (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER)
-    || a.folderPath.localeCompare(b.folderPath, 'zh-CN', { numeric: true }))
+    || a.source.folderPath.localeCompare(b.source.folderPath, 'zh-CN', { numeric: true }))
 
-  if (groups.length > 1) {
-    const used = new Set(groups.map((group) => group.number).filter((value): value is number => Boolean(value)))
+  const seasons: Array<{ number?: number, sources: MediaSource[] }> = []
+  for (const candidate of folderSources) {
+    const matchingSeason = seasons.find((season) => {
+      if (season.number && candidate.number && season.number !== candidate.number) return false
+      if (season.number && candidate.number && season.number === candidate.number) return true
+      return season.sources.some((source) => sourcesContainSameEpisodes(source, candidate.source))
+    })
+    if (matchingSeason) {
+      matchingSeason.number ??= candidate.number
+      matchingSeason.sources.push(candidate.source)
+    } else {
+      seasons.push({ number: candidate.number, sources: [candidate.source] })
+    }
+  }
+
+  if (seasons.length > 1) {
+    const used = new Set(seasons.map((group) => group.number).filter((value): value is number => Boolean(value)))
     let next = 1
-    for (const group of groups) {
+    for (const group of seasons) {
       if (group.number) continue
       while (used.has(next)) next += 1
       group.number = next
       used.add(next)
     }
-    groups.sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
+    seasons.sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
   }
-  return groups
+
+  return seasons.map((season) => {
+    makeSourceLabelsUnique(season.sources)
+    const primary = season.sources[0]
+    const items = season.sources.flatMap((source) => source.items).sort(compareEpisodes)
+    const identity = `${season.number ?? 'unknown'}:${season.sources.map((source) => source.folderPath).sort().join('|')}`
+    return {
+      id: `s${hashIdentity(identity)}`,
+      folderPath: primary.folderPath,
+      folderName: primary.folderName,
+      number: season.number,
+      items,
+      sources: season.sources,
+    }
+  })
+}
+
+function sourceLabel(item: MediaItem | undefined, folderName: string) {
+  const root = item?.libraryRoot || item?.path
+  return root?.split('/').filter(Boolean)[0] || folderName || '未知来源'
+}
+
+function makeSourceLabelsUnique(sources: MediaSource[]) {
+  const counts = new Map<string, number>()
+  for (const source of sources) counts.set(source.label, (counts.get(source.label) ?? 0) + 1)
+  const used = new Map<string, number>()
+  for (const source of sources) {
+    if ((counts.get(source.label) ?? 0) <= 1) continue
+    const base = `${source.label} · ${source.folderName}`
+    const index = (used.get(base) ?? 0) + 1
+    used.set(base, index)
+    source.label = index > 1 ? `${base} ${index}` : base
+  }
+}
+
+function sourcesContainSameEpisodes(a: MediaSource, b: MediaSource) {
+  const aItems = a.items.filter((item) => item.episode)
+  const bItems = b.items.filter((item) => item.episode)
+  const minimum = Math.min(aItems.length, bItems.length)
+  if (minimum < 2) return false
+
+  const exactA = new Set(aItems.map(exactEpisodeFingerprint))
+  const exactMatches = bItems.filter((item) => exactA.has(exactEpisodeFingerprint(item))).length
+  if (exactMatches >= 2 && exactMatches / minimum >= 0.5) return true
+
+  const semanticA = new Set(aItems.map(semanticEpisodeFingerprint).filter(Boolean))
+  const semanticMatches = bItems.filter((item) => {
+    const fingerprint = semanticEpisodeFingerprint(item)
+    return fingerprint ? semanticA.has(fingerprint) : false
+  }).length
+  return semanticMatches >= Math.min(3, minimum) && semanticMatches / minimum >= 0.8
+}
+
+function exactEpisodeFingerprint(item: MediaItem) {
+  const fileName = item.path.split('/').at(-1)?.normalize('NFKC').toLocaleLowerCase() ?? ''
+  return `${item.episode}:${item.size}:${fileName}`
+}
+
+function semanticEpisodeFingerprint(item: MediaItem) {
+  const title = item.episodeTitle ? normalizeTitle(item.episodeTitle) : ''
+  return item.episode && title ? `${item.episode}:${title}` : ''
 }
 
 function inferSeasonNumber(value: string) {
@@ -299,7 +428,7 @@ function reconcileTvFolders(items: MediaItem[]) {
     const primary = recognized.find((item) => item.poster || item.overview) ?? recognized[0]
     const commonSeason = [...new Set(recognized.map((item) => item.season).filter((value): value is number => Boolean(value)))]
     for (const item of group) {
-      if (item.category === 'tv') continue
+      if (item.category === 'tv' || item.category === 'music') continue
       item.category = 'tv'
       item.title = primary.title
       item.poster = primary.poster

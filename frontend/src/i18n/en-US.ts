@@ -1,3 +1,48 @@
 // English locale placeholder. Add translated keys here incrementally; missing
 // entries intentionally fall back to Simplified Chinese until the locale ships.
-export const enUS: Record<string, unknown> = {}
+export const enUS: Record<string, unknown> = {
+  nav: { home: 'Home', library: 'Library', music: 'Music', files: 'Files', settings: 'Settings', main: 'Main navigation' },
+  music: {
+    title: 'Music', rescan: 'Scan again', scanning: 'Finding music', scanPreparing: 'Preparing media folders…',
+    discovered: '{count} media files found', search: 'Search albums, songs, or artists', albums: 'Albums',
+    albumSummary: '{albums} albums · {songs} songs', songCount: '{count} songs', queueCount: '{count} in queue',
+    seconds: '{count}s', minutes: '{count} min', hoursMinutes: '{hours} hr {minutes} min',
+    unknownAlbum: 'Unknown album', unknownArtist: 'Unknown artist', multipleArtists: 'Various artists',
+    playAll: 'Play all', cached: 'Cached', cache: 'Cache on this device', nowPlaying: 'Now playing', noLyrics: 'No matching LRC lyrics found',
+    chooseFolder: 'Choose a music folder', chooseFolderBody: 'Add a cloud music folder to the media library. BMovie only scans paths you select.',
+    configureFolder: 'Configure media folders', building: 'Building music library', buildingBody: 'Songs appear as soon as they are found.',
+    empty: 'No music found', formats: 'Supports MP3, FLAC, M4A, AAC, OGG, Opus, WAV, APE, ALAC, and more.',
+    player: 'Music player', previous: 'Previous', play: 'Play', pause: 'Pause', next: 'Next', progress: 'Playback position', queue: 'Open play queue',
+    openFullPlayer: 'Open full player', backToMusic: 'Back to music', lyrics: 'Lyrics', trackInfo: 'Track information',
+    artist: 'Artist', album: 'Album', format: 'Format', fileSize: 'File size', duration: 'Duration', track: 'Track', source: 'Source path',
+    bitrate: 'Bitrate', sampleRate: 'Sample rate', bitDepth: 'Bit depth', channels: 'Channels', mono: 'Mono', stereo: 'Stereo', channelCount: '{count} channels',
+    onlineMatching: 'Matching music information online…', onlineMatched: 'Matched by NetEase Cloud Music', localLyrics: 'Local lyrics', onlineLyrics: 'NetEase lyrics',
+    reportLyrics: 'Report incorrect lyrics', reportingLyrics: 'Reporting…', reportRetrying: 'Excluding this result and finding another match…',
+    reportRecorded: 'Incorrect lyrics recorded', reportSwitched: 'Reported and switched to another lyric match', reportNoReplacement: 'Report recorded; no alternative lyrics found', reportFailed: 'Could not report incorrect lyrics',
+  },
+  about: {
+    title: 'About BMovie', version: 'Version {version}', description: 'A personal media library for cloud drives and local content.',
+    repository: 'GitHub repository', repositoryDetail: 'Source code, releases, and development progress', contributors: 'Contributors',
+    contributorsLoading: 'Loading contributors…', contributorsFailed: 'The full contributor list is temporarily unavailable',
+    feedback: 'Send feedback', feedbackDetail: 'Open GitHub Issues to report a problem or suggest an improvement',
+    licenseNote: 'BMovie is under active development. Testing, issues, and code contributions are welcome.',
+    back: 'Back to settings', openExternal: 'Open in browser',
+  },
+  onboarding: {
+    skip: 'Skip for now', progress: 'Step {current} of {total}', optional: 'None of these are required. You can finish them later in Settings.',
+    next: 'Next', finish: 'Start using BMovie', configure: 'Open settings', registerTmdb: 'Register for TMDB API',
+    step1Title: 'Add your media folders', step1Body: 'Choose movie, series, or music folders from your cloud drive. BMovie only scans paths you select and indexes content as it is found.',
+    step1Tip: 'No cloud drive yet? Sign in or mount one under Cloud storage first.', step1Action: 'Open media library',
+    step2Title: 'Enable richer TMDB metadata', step2Body: 'Create a TMDB account, request an API Read Access Token, then paste it under Metadata sources and enable TMDB.',
+    step2Tip: 'The token stays on this device. BMovie still falls back to other metadata providers.', step2Action: 'Open metadata settings',
+    step3Title: 'Connect Bilibili for discovery', step3Body: 'Connect your Bilibili account to sync followed anime and automatically match danmaku to episodes in your library.',
+    step3Tip: 'This is optional and does not require a premium membership. Public anime can still be searched manually.', step3Action: 'Open discovery settings',
+  },
+  storage: {
+    authQuark: 'Sign in to Quark', authBaidu: 'Authorize Baidu Netdisk', authAliyun: 'Authorize Aliyun Drive',
+    authQuarkNote: 'Sign in inside the app to fill the cookie automatically. Credentials stay in the local OpenList configuration.',
+    authOAuthNote: 'Use the provider’s official sign-in and consent page, then fill the refresh token automatically.',
+    authorize: 'Sign in', authorizing: 'Authorizing…', reauthorize: 'Authorize again',
+    authReady: 'Authorization received. Save this storage to apply it.', authAndroidOnly: 'Automatic sign-in is currently available on Android only.',
+  },
+}

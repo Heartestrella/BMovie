@@ -14,6 +14,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.net.InetAddress;
 import java.net.URI;
@@ -30,6 +31,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.Inflater;
+import java.util.zip.InflaterInputStream;
 
 import okhttp3.Cache;
 import okhttp3.Dns;
@@ -41,7 +44,7 @@ import okhttp3.Response;
 
 @CapacitorPlugin(name = "NativeHttp")
 public class NativeHttpPlugin extends Plugin {
-    private static final Set<String> JSON_HOSTS = Set.of("api.bgm.tv", "api.themoviedb.org");
+    private static final Set<String> JSON_HOSTS = Set.of("api.bgm.tv", "api.themoviedb.org", "music.163.com", "api.bilibili.com");
     private static final Set<String> TMDB_HOSTS = Set.of("api.themoviedb.org", "image.tmdb.org", "images.tmdb.org");
     private static final String CHECK_TMDB_URL = "https://raw.githubusercontent.com/cnwikee/CheckTMDB/refs/heads/main/Tmdb_host_ipv4";
     private static final String PREFS_NAME = "bmovie_trusted_dns";
@@ -79,11 +82,18 @@ public class NativeHttpPlugin extends Plugin {
                     .header("Accept", "application/json")
                     .header("User-Agent", "BMovie/0.1 Android")
                     .method(method, requestBody);
+                if ("music.163.com".equals(uri.getHost())) builder.header("Referer", "https://music.163.com/");
+                if ("api.bilibili.com".equals(uri.getHost())) {
+                    builder.header("Referer", "https://www.bilibili.com/");
+                    builder.header("Accept-Encoding", "identity");
+                }
                 copyAllowedHeaders(call.getObject("headers"), builder);
                 try (Response response = httpClient().newCall(builder.build()).execute()) {
                     JSObject result = new JSObject();
                     result.put("status", response.code());
-                    result.put("body", response.body() == null ? "" : response.body().string());
+                    result.put("contentType", response.header("Content-Type", ""));
+                    result.put("contentEncoding", response.header("Content-Encoding", ""));
+                    result.put("body", decodeResponseBody(response));
                     call.resolve(result);
                 }
             } catch (Exception error) {
@@ -149,9 +159,35 @@ public class NativeHttpPlugin extends Plugin {
         Iterator<String> keys = headers.keys();
         while (keys.hasNext()) {
             String name = keys.next();
-            if (!"authorization".equalsIgnoreCase(name) && !"content-type".equalsIgnoreCase(name)) continue;
+            if (!"authorization".equalsIgnoreCase(name) && !"content-type".equalsIgnoreCase(name) && !"cookie".equalsIgnoreCase(name)) continue;
             String value = headers.optString(name, "");
             if (!value.isEmpty()) builder.header(name, value);
+        }
+    }
+
+    private static String decodeResponseBody(Response response) throws Exception {
+        if (response.body() == null) return "";
+        byte[] bytes = response.body().bytes();
+        if (!"deflate".equalsIgnoreCase(response.header("Content-Encoding", ""))) {
+            return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        }
+        try {
+            return inflate(bytes, false);
+        } catch (Exception ignored) {
+            return inflate(bytes, true);
+        }
+    }
+
+    private static String inflate(byte[] bytes, boolean nowrap) throws Exception {
+        Inflater inflater = new Inflater(nowrap);
+        try (InflaterInputStream input = new InflaterInputStream(new ByteArrayInputStream(bytes), inflater);
+             ByteArrayOutputStream output = new ByteArrayOutputStream(Math.max(1024, bytes.length * 2))) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+            return output.toString(java.nio.charset.StandardCharsets.UTF_8.name());
+        } finally {
+            inflater.end();
         }
     }
 

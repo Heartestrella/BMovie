@@ -1,6 +1,6 @@
 # BMovie
 
-BMovie 是一个 Android 私人媒体库应用。应用通过 Capacitor 运行 Vue 前端，并在 APK 内启动独立的 OpenList 服务，用统一目录访问网盘和本地存储。
+BMovie 是一个 Android 私人媒体库应用应用通过 Capacitor 运行 Vue 前端，并在 APK 内启动独立的 OpenList 服务，用统一目录访问网盘和本地存储
 
 ## 已实现
 
@@ -24,13 +24,13 @@ pnpm android:sync
 pnpm android:run
 ```
 
-Android 包目前只包含 `arm64-v8a` OpenList 二进制。调试 APK 输出到 `android/app/build/outputs/apk/debug/app-debug.apk`。
+Android 包目前只包含 `arm64-v8a` OpenList 二进制调试 APK 输出到 `android/app/build/outputs/apk/debug/app-debug.apk`
 
 ## 首次使用
 
-1. 打开“设置 → 网盘存储”。
-2. 选择 OpenList 驱动并填写驱动要求的字段。
-3. 打开“媒体库”并执行扫描。
-4. 可选：在“设置 → TMDB 元数据”中配置 API Read Access Token。
+1. 打开“设置 → 网盘存储”
+2. 选择 OpenList 驱动并填写驱动要求的字段
+3. 打开“媒体库”并执行扫描
+4. 可选：在“设置 → TMDB 元数据”中配置 API Read Access Token
 
-管理员凭据由应用随机生成并保存在应用私有存储中。OpenList 仅监听设备回环地址。
+管理员凭据由应用随机生成并保存在应用私有存储中OpenList 仅监听设备回环地址

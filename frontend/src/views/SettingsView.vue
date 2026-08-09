@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ChevronRight, Cloud, Database, Download, Info, KeyRound, Languages, PlayCircle } from '@lucide/vue'
+import { ChevronRight, Cloud, Compass, Database, Download, Info, KeyRound, Languages, PlayCircle, Search } from '@lucide/vue'
 import type { Component } from 'vue'
 import { loadPlayerSettings, type PlayerMode } from '../services/playerSettings'
 import { useOfflineCacheStore } from '../stores/offlineCache'
@@ -27,6 +27,7 @@ const groups = computed<SettingGroup[]>(() => [
       { icon: Cloud, label: '网盘存储', detail: '添加和管理', to: '/settings/storage' },
       { icon: Database, label: '媒体资源库', detail: '自定义扫描目录', to: '/settings/library' },
       { icon: KeyRound, label: '元数据来源', detail: '语言、Bangumi、TMDB、TVmaze', to: '/settings/metadata' },
+      { icon: Search, label: '找资源', detail: 'B站追番、弹幕抓取与绑定', to: '/settings/discovery' },
     ],
   },
   {
@@ -38,7 +39,10 @@ const groups = computed<SettingGroup[]>(() => [
   },
   {
     title: '关于',
-    rows: [{ icon: Info, label: 'BMovie', detail: '0.1.0' }],
+    rows: [
+      { icon: Compass, label: '新手引导', detail: '重新查看推荐配置', to: '/onboarding' },
+      { icon: Info, label: '关于 BMovie', detail: '版本 0.1.0', to: '/settings/about' },
+    ],
   },
 ])
 

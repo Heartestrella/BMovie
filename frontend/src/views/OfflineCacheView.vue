@@ -7,11 +7,13 @@ import { useMediaStore } from '../stores/media'
 import { useOpenListStore } from '../stores/openlist'
 import { openListRequest } from '../services/openlist'
 import { NativePlayer } from '../services/nativePlayer'
+import { useMusicPlayerStore } from '../stores/musicPlayer'
 
 const router = useRouter()
 const offline = useOfflineCacheStore()
 const media = useMediaStore()
 const openlist = useOpenListStore()
+const musicPlayer = useMusicPlayerStore()
 const busyId = ref('')
 const error = ref('')
 let poll: number | undefined
@@ -47,6 +49,12 @@ async function play(entry: OfflineCacheEntry) {
   error.value = ''
   try {
     const item = media.items.find((candidate) => candidate.path === entry.sourcePath)
+    if (item?.category === 'music') {
+      const album = media.musicItems.filter((candidate) => candidate.folderPath === item.folderPath)
+      const index = album.findIndex((candidate) => candidate.path === item.path)
+      await musicPlayer.playQueue(album.length ? album : [item], Math.max(0, index))
+      return
+    }
     const result = await NativePlayer.play({
       url: entry.internalUri || entry.uri,
       title: entry.title,
@@ -98,7 +106,7 @@ async function retry(entry: OfflineCacheEntry) {
 }
 
 async function remove(entry: OfflineCacheEntry) {
-  if (busyId.value || !window.confirm(`删除“${entry.title}”的本机缓存？\n不会删除网盘中的原文件。`)) return
+  if (busyId.value || !window.confirm(`删除“${entry.title}”的本机缓存？\n不会删除网盘中的原文件`)) return
   busyId.value = entry.id
   error.value = ''
   try {
@@ -112,7 +120,7 @@ async function remove(entry: OfflineCacheEntry) {
 
 async function clearAll() {
   const targets = [...offline.entries]
-  if (!targets.length || busyId.value || !window.confirm(`删除全部 ${targets.length} 项本机缓存？\n不会删除网盘中的原文件。`)) return
+  if (!targets.length || busyId.value || !window.confirm(`删除全部 ${targets.length} 项本机缓存？\n不会删除网盘中的原文件`)) return
   busyId.value = 'all'
   error.value = ''
   try {
@@ -152,7 +160,7 @@ onUnmounted(() => window.clearInterval(poll))
       <button v-if="offline.entries.length" class="clear-button" :disabled="Boolean(busyId)" @click="clearAll"><Trash2 :size="16" />清空</button>
     </header>
 
-    <p class="intro">缓存文件保存在 BMovie 的应用目录中，播放时优先走本机，不会占用网盘流量。卸载应用会同时移除这些文件。</p>
+    <p class="intro">缓存文件保存在 BMovie 的应用目录中，播放时优先走本机，不会占用网盘流量卸载应用会同时移除这些文件</p>
     <p v-if="error" class="error-banner"><CircleAlert :size="17" />{{ error }}</p>
 
     <div v-if="offline.entries.length" class="cache-list">
@@ -176,7 +184,7 @@ onUnmounted(() => window.clearInterval(poll))
     </div>
 
     <div v-else class="empty-state">
-      <div><span class="empty-icon"><Download :size="24" /></span><h2>还没有本机缓存</h2><p>在影片详情页点“缓存到本机”，下载完成后就能离线播放。</p></div>
+      <div><span class="empty-icon"><Download :size="24" /></span><h2>还没有本机缓存</h2><p>在影片详情页点“缓存到本机”，下载完成后就能离线播放</p></div>
     </div>
   </section>
 </template>

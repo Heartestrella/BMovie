@@ -37,8 +37,8 @@ async function save() {
 <template>
   <section class="page metadata-page">
     <header class="page-header"><div class="title-row"><button class="icon-button" aria-label="返回" @click="router.back()"><ArrowLeft :size="20" /></button><div><p class="eyebrow">Metadata</p><h1>元数据来源</h1></div></div></header>
-    <p class="lead">扫描时只在标题能够可靠匹配时归类为电影或剧集，无法匹配的文件会进入“其他”。</p>
-    <p class="priority-note"><b>自动降级顺序</b><span>TMDB → Bangumi → TVmaze</span><small>仅使用已启用的来源；上一来源连接失败或没有可靠结果时，自动继续下一来源。</small></p>
+    <p class="lead">扫描时只在标题能够可靠匹配时归类为电影或剧集，无法匹配的文件会进入“其他”</p>
+    <p class="priority-note"><b>自动降级顺序</b><span>TMDB → Bangumi → TVmaze</span><small>仅使用已启用的来源；上一来源连接失败或没有可靠结果时，自动继续下一来源</small></p>
 
     <label class="language-field">
       <span><Languages :size="18" /><b>元数据语言</b><small>标题、简介、分集名优先使用此语言</small></span>
@@ -52,28 +52,28 @@ async function save() {
 
     <article class="provider-card">
       <div class="provider-head"><span class="provider-icon"><Radio :size="20" /></span><div><h2>TMDB</h2><p>非商业使用免费 · 电影与剧集</p></div><label class="switch"><input v-model="settings.tmdbEnabled" type="checkbox" /><i><b /></i></label></div>
-      <div v-if="settings.tmdbEnabled" class="token-field"><label for="tmdb-token"><KeyRound :size="15" />API Read Access Token</label><textarea id="tmdb-token" v-model="settings.tmdbToken" rows="4" placeholder="粘贴 TMDB API Read Access Token" /><small>Token 仅保存在本机。留空时不会请求 TMDB。</small></div>
-      <p class="provider-note">依次尝试电影或剧集专用搜索、综合搜索，再使用翻译与别名二次校验。Android 端会自动更新并缓存可用 IP，同时保持 HTTPS 证书校验。</p>
+      <div v-if="settings.tmdbEnabled" class="token-field"><label for="tmdb-token"><KeyRound :size="15" />API Read Access Token</label><textarea id="tmdb-token" v-model="settings.tmdbToken" rows="4" placeholder="粘贴 TMDB API Read Access Token" /><small>Token 仅保存在本机留空时不会请求 TMDB</small></div>
+      <p class="provider-note">依次尝试电影或剧集专用搜索、综合搜索，再使用翻译与别名二次校验Android 端会自动更新并缓存可用 IP，同时保持 HTTPS 证书校验</p>
       <a href="https://github.com/cnwikee/CheckTMDB" target="_blank">连通性方案参考 CheckTMDB <ExternalLink :size="14" /></a>
       <a href="https://www.themoviedb.org/settings/api" target="_blank">申请 TMDB API 凭证 <ExternalLink :size="14" /></a>
     </article>
 
     <article class="provider-card">
       <div class="provider-head"><span class="provider-icon"><Tv :size="20" /></span><div><h2>Bangumi</h2><p>免费、无需密钥 · 中文动漫元数据</p></div><label class="switch"><input v-model="settings.bangumiEnabled" type="checkbox" /><i><b /></i></label></div>
-      <p class="provider-note">中文或日文模式下优先匹配动漫标题、简介、评分和中文分集名，缺少的图片与演员信息再由其他来源补全。</p>
+      <p class="provider-note">中文或日文模式下优先匹配动漫标题、简介、评分和中文分集名，缺少的图片与演员信息再由其他来源补全</p>
       <a href="https://bangumi.github.io/api/" target="_blank">查看 Bangumi API <ExternalLink :size="14" /></a>
     </article>
 
     <article class="provider-card">
       <div class="provider-head"><span class="provider-icon"><Tv :size="20" /></span><div><h2>TVmaze</h2><p>免费、无需密钥 · 用于剧集识别</p></div><label class="switch"><input v-model="settings.tvmazeEnabled" type="checkbox" /><i><b /></i></label></div>
-      <p class="provider-note">适合按 S01E01 等规范命名的剧集。数据按 CC BY-SA 许可提供。</p>
+      <p class="provider-note">适合按 S01E01 等规范命名的剧集数据按 CC BY-SA 许可提供</p>
       <a href="https://www.tvmaze.com/api" target="_blank">查看 TVmaze API <ExternalLink :size="14" /></a>
     </article>
 
     <p v-if="error" class="error-banner">{{ error }}</p>
     <p v-if="saved" class="success"><Check :size="16" />设置已保存</p>
     <button class="primary-button save-button" :disabled="testing" @click="save">{{ testing ? '正在验证并保存…' : '保存设置' }}</button>
-    <p class="attribution">本产品使用 TMDB API，但未经 TMDB 认可或认证。Bangumi 与 TVmaze 数据的使用遵循各自许可与署名要求。</p>
+    <p class="attribution">本产品使用 TMDB API，但未经 TMDB 认可或认证Bangumi 与 TVmaze 数据的使用遵循各自许可与署名要求</p>
   </section>
 </template>
 

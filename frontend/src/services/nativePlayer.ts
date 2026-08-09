@@ -5,7 +5,11 @@ interface NativePlaybackOptions {
   title: string
   position?: number
   subtitles?: NativeSubtitle[]
+  danmaku?: NativeDanmaku[]
+  danmakuSource?: string
 }
+
+export interface NativeDanmaku { time: number; mode: number; color: number; text: string }
 
 export interface NativeSubtitle {
   url: string

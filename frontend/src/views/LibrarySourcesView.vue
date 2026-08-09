@@ -67,7 +67,7 @@ onMounted(() => sources.load())
 
     <template v-if="choosing">
       <div class="picker-heading">
-        <div><h2>选择媒体目录</h2><p>只会扫描所选目录及其子目录，不会遍历整个网盘。</p></div>
+        <div><h2>选择媒体目录</h2><p>只会扫描所选目录及其子目录，不会遍历整个网盘</p></div>
         <button class="text-button" @click="choosing = false">取消</button>
       </div>
       <nav class="breadcrumbs" aria-label="当前目录">
@@ -91,7 +91,7 @@ onMounted(() => sources.load())
     </template>
 
     <template v-else>
-      <div class="intro"><p>扫描仅在这里配置的路径中进行。你可以为电影、剧集或不同网盘分别添加目录。</p></div>
+      <div class="intro"><p>扫描仅在这里配置的路径中进行你可以为电影、剧集、音乐或不同网盘分别添加目录</p></div>
       <div v-if="sources.sources.length" class="source-list">
         <article v-for="source in sources.sources" :key="source.path" class="source-row">
           <button class="source-main" @click="sources.toggle(source.path)">
@@ -103,7 +103,7 @@ onMounted(() => sources.load())
         </article>
       </div>
       <div v-else class="empty-state compact">
-        <div><span class="empty-icon"><FolderOpen :size="24" /></span><h2>还没有媒体目录</h2><p>添加网盘内存放电影或剧集的具体目录。</p><button class="primary-button" @click="openPicker"><Plus :size="17" />添加目录</button></div>
+        <div><span class="empty-icon"><FolderOpen :size="24" /></span><h2>还没有媒体目录</h2><p>添加网盘内存放电影、剧集或音乐的具体目录</p><button class="primary-button" @click="openPicker"><Plus :size="17" />添加目录</button></div>
       </div>
     </template>
   </section>

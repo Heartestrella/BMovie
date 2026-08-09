@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 
 import androidx.activity.result.ActivityResult;
 
@@ -25,13 +26,43 @@ public class NativePlayerPlugin extends Plugin {
             call.reject("播放地址为空");
             return;
         }
+        JSArray subtitles = call.getArray("subtitles");
+        JSArray danmaku = call.getArray("danmaku");
+        String subtitlesJson = subtitles == null ? "[]" : subtitles.toString();
+        String danmakuJson = danmaku == null ? "[]" : danmaku.toString();
+        String payloadPath = null;
+        try {
+            JSObject payload = new JSObject();
+            payload.put("subtitles", new org.json.JSONArray(subtitlesJson));
+            payload.put("danmaku", new org.json.JSONArray(danmakuJson));
+            payloadPath = PlayerPayloadStore.write(getContext(), payload);
+        } catch (Exception ignored) {
+            // The compact legacy extras below keep playback available if cache I/O fails.
+        }
+
+        // Capacitor persists pending Activity-result call options twice in the host Activity
+        // state. Keeping thousands of comments here exceeds Android's Binder transaction cap.
+        call.getData().remove("subtitles");
+        call.getData().remove("danmaku");
+
         Intent intent = new Intent(getContext(), PlayerActivity.class);
         intent.putExtra(PlayerActivity.EXTRA_URL, url);
         intent.putExtra(PlayerActivity.EXTRA_TITLE, call.getString("title", ""));
         intent.putExtra(PlayerActivity.EXTRA_POSITION, call.getDouble("position", 0.0).longValue());
-        JSArray subtitles = call.getArray("subtitles");
-        intent.putExtra(PlayerActivity.EXTRA_SUBTITLES, subtitles == null ? "[]" : subtitles.toString());
+        if (payloadPath != null) {
+            intent.putExtra(PlayerActivity.EXTRA_PAYLOAD_PATH, payloadPath);
+        } else {
+            intent.putExtra(PlayerActivity.EXTRA_SUBTITLES, subtitlesJson);
+            intent.putExtra(PlayerActivity.EXTRA_DANMAKU, danmakuJson);
+        }
+        intent.putExtra(PlayerActivity.EXTRA_DANMAKU_SOURCE, call.getString("danmakuSource", ""));
         startActivityForResult(call, intent, "playerFinished");
+    }
+
+    @Override
+    protected Bundle saveInstanceState() {
+        // Playback input lives in PlayerPayloadStore; never duplicate it into Activity state.
+        return new Bundle();
     }
 
     @PluginMethod

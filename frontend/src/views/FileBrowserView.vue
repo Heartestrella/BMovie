@@ -96,7 +96,7 @@ onMounted(() => { if (openlist.state === 'stopped') openlist.start() })
         <Folder v-if="item.is_dir" :size="21" /><FileVideo v-else :size="21" />
         <span><strong>{{ item.name }}</strong><small v-if="!item.is_dir">{{ (item.size / 1024 / 1024).toFixed(1) }} MB</small></span>
       </button>
-      <div v-if="files.length === 0" class="empty-state"><div><span class="empty-icon"><Folder :size="24" /></span><h2>{{ noStorage ? '尚未添加存储' : '目录为空' }}</h2><p>{{ noStorage ? '请先前往设置添加网盘存储。' : '这个目录中还没有文件。' }}</p><RouterLink v-if="noStorage" to="/settings" class="primary-button">前往设置</RouterLink></div></div>
+      <div v-if="files.length === 0" class="empty-state"><div><span class="empty-icon"><Folder :size="24" /></span><h2>{{ noStorage ? '尚未添加存储' : '目录为空' }}</h2><p>{{ noStorage ? '请先前往设置添加网盘存储' : '这个目录中还没有文件' }}</p><RouterLink v-if="noStorage" to="/settings" class="primary-button">前往设置</RouterLink></div></div>
     </div>
   </section>
 </template>
