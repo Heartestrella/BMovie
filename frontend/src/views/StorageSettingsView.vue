@@ -43,7 +43,7 @@ const driverNames = computed(() => Object.keys(drivers.value).sort((a, b) => {
 }))
 const definition = computed(() => drivers.value[selectedDriver.value])
 const credentialPattern = /(?:user(?:name)?|password|passcode|cookie|token|secret|client_?id|client_?secret|share_code|receive_code|authorization)/i
-interface AuthConfig { provider: CloudAuthProvider; targetField: 'cookie' | 'refresh_token'; title: string; description: string }
+interface AuthConfig { provider: CloudAuthProvider; targetField: 'cookie' | 'refresh_token' | 'authorization'; title: string; description: string }
 const authConfig = computed<AuthConfig | undefined>(() => {
   if (selectedDriver.value === 'Quark') return {
     provider: 'quark', targetField: 'cookie', title: t('storage.authQuark'), description: t('storage.authQuarkNote'),
@@ -53,6 +53,9 @@ const authConfig = computed<AuthConfig | undefined>(() => {
   }
   if (selectedDriver.value === 'AliyundriveOpen') return {
     provider: 'aliyun', targetField: 'refresh_token', title: t('storage.authAliyun'), description: t('storage.authOAuthNote'),
+  }
+  if (selectedDriver.value === '139Yun') return {
+    provider: 'cmcc', targetField: 'authorization', title: '登录中国移动云盘', description: '在移动云盘官方页面登录，BMovie 会自动读取当前会话的授权字段',
   }
   return undefined
 })
@@ -69,12 +72,16 @@ const basicFields = computed(() => {
 })
 const driverFields = computed(() => {
   if (!definition.value) return []
-  return definition.value.additional.filter((field) => field.name !== authConfig.value?.targetField && (needsInput(field) || isCredential(field)))
+  const alternatives = new Set<string>()
+  if (selectedDriver.value === '139Yun') ['authorization', 'username', 'password', 'mail_cookies'].forEach((name) => alternatives.add(name))
+  else if (authConfig.value?.targetField) alternatives.add(authConfig.value.targetField)
+  return definition.value.additional.filter((field) => !alternatives.has(field.name) && (needsInput(field) || isCredential(field)))
 })
 const advancedFields = computed(() => {
   if (!definition.value) return []
   const visible = new Set([...basicFields.value, ...driverFields.value].map((field) => field.name))
-  return [...definition.value.common, ...definition.value.additional].filter((field) => !visible.has(field.name))
+  const hidden = selectedDriver.value === '139Yun' ? new Set(['authorization', 'username', 'password', 'mail_cookies']) : new Set<string>()
+  return [...definition.value.common, ...definition.value.additional].filter((field) => !visible.has(field.name) && !hidden.has(field.name))
 })
 
 function initialValue(field: DriverField): string | boolean {

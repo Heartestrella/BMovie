@@ -125,13 +125,30 @@ export interface MediaWork {
   seasons: MediaSeason[]
   lastPlayed?: number
   indexKind?: 'series' | 'movie'
+  manuallyCorrected: boolean
+  metadataLocked: boolean
 }
 
+export interface MediaCorrection {
+  path: string
+  groupId?: string
+  title?: string
+  category?: 'movie' | 'tv' | 'other'
+  season?: number | null
+  episode?: number | null
+  metadataLocked?: boolean
+  updatedAt: number
+}
+
+export type MediaCorrectionUpdate = Omit<Partial<MediaCorrection>, 'path' | 'updatedAt'> & { path: string }
+
 const STORAGE_KEY = 'bmovie-media-library'
+const CORRECTIONS_KEY = 'bmovie-media-corrections-v1'
 export const MEDIA_INDEX_VERSION = 2
 
 export const useMediaStore = defineStore('media', () => {
   const items = ref<MediaItem[]>([])
+  const corrections = ref<Record<string, MediaCorrection>>({})
   const loaded = ref(false)
   const recent = computed(() => items.value.filter((item) => item.lastPlayed).sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0)))
   const musicItems = computed(() => items.value.filter((item) => item.category === 'music'))
@@ -139,7 +156,9 @@ export const useMediaStore = defineStore('media', () => {
     const grouped = new Map<string, MediaItem[]>()
     for (const item of items.value) {
       if (item.category === 'music') continue
-      const identity = workIdentity(item)
+      const identity = corrections.value[item.path]?.groupId
+        ? `manual:${corrections.value[item.path].groupId}`
+        : workIdentity(item)
       const group = grouped.get(identity) ?? []
       group.push(item)
       grouped.set(identity, group)
@@ -182,6 +201,8 @@ export const useMediaStore = defineStore('media', () => {
         items: sorted,
         seasons: category === 'tv' ? buildSeasons(sorted) : [],
         lastPlayed: Math.max(0, ...group.map((item) => item.lastPlayed ?? 0)) || undefined,
+        manuallyCorrected: group.some((item) => Boolean(corrections.value[item.path])),
+        metadataLocked: group.length > 0 && group.every((item) => corrections.value[item.path]?.metadataLocked === true),
       }
     }).sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0) || a.title.localeCompare(b.title, 'zh-CN'))
   })
@@ -192,9 +213,14 @@ export const useMediaStore = defineStore('media', () => {
     if (loaded.value) return
     if (!loadRequest) {
       loadRequest = (async () => {
-        const savedItems = (await localforage.getItem<MediaItem[]>(STORAGE_KEY)) ?? []
-        const libraryItems = savedItems.filter((item) => !item.path.startsWith('netease://'))
-        items.value = libraryItems.map((item) => {
+        const [savedItems, savedCorrections] = await Promise.all([
+          localforage.getItem<MediaItem[]>(STORAGE_KEY),
+          localforage.getItem<Record<string, MediaCorrection>>(CORRECTIONS_KEY),
+        ])
+        corrections.value = savedCorrections ?? {}
+        const persistedItems = savedItems ?? []
+        const libraryItems = persistedItems.filter((item) => !item.path.startsWith('netease://'))
+        const migrated = libraryItems.map((item) => {
           const inferred = inferEpisode(item.path)
           return {
             ...item,
@@ -208,8 +234,9 @@ export const useMediaStore = defineStore('media', () => {
             folderPath: item.folderPath ?? parentPath(item.path),
           }
         })
-        reconcileTvFolders(items.value)
-        if (libraryItems.length !== savedItems.length) await localforage.setItem(STORAGE_KEY, JSON.parse(JSON.stringify(items.value)))
+        reconcileTvFolders(migrated)
+        items.value = applyStoredCorrections(migrated, corrections.value)
+        if (libraryItems.length !== persistedItems.length) await localforage.setItem(STORAGE_KEY, JSON.parse(JSON.stringify(items.value)))
         loaded.value = true
       })()
     }
@@ -224,12 +251,49 @@ export const useMediaStore = defineStore('media', () => {
     await localforage.setItem(STORAGE_KEY, plain)
   }
   function previewScan(scanned: MediaItem[]) {
-    items.value = scanned
+    items.value = applyStoredCorrections(scanned, corrections.value)
   }
   async function commitScan(scanned: MediaItem[]) {
     reconcileTvFolders(scanned)
-    items.value = scanned
+    items.value = applyStoredCorrections(scanned, corrections.value)
     await save()
+  }
+  function correctionFor(path: string) {
+    return corrections.value[path]
+  }
+  function isMetadataLocked(path: string) {
+    return corrections.value[path]?.metadataLocked === true
+  }
+  async function applyManualCorrections(updates: MediaCorrectionUpdate[]) {
+    const now = Date.now()
+    const next = { ...corrections.value }
+    for (const update of updates) {
+      const current = next[update.path]
+      next[update.path] = {
+        ...current,
+        ...update,
+        path: update.path,
+        updatedAt: now,
+      }
+    }
+    corrections.value = next
+    items.value = applyStoredCorrections(items.value, next)
+    await Promise.all([saveCorrections(), save()])
+  }
+  async function clearManualCorrections(paths: string[]) {
+    const next = { ...corrections.value }
+    for (const path of paths) delete next[path]
+    corrections.value = next
+    const affected = new Set(paths)
+    for (const item of items.value) {
+      if (!affected.has(item.path)) continue
+      item.category = 'pending'
+      item.metadataVersion = 0
+    }
+    await Promise.all([saveCorrections(), save()])
+  }
+  async function saveCorrections() {
+    await localforage.setItem(CORRECTIONS_KEY, JSON.parse(JSON.stringify(corrections.value)))
   }
   async function updateProgress(path: string, title: string, position: number, duration: number) {
     if (path.startsWith('netease://')) return
@@ -258,8 +322,37 @@ export const useMediaStore = defineStore('media', () => {
     }
     if (changed) await save()
   }
-  return { items, works, musicItems, recent, recentWorks, loaded, load, previewScan, commitScan, updateProgress, updateMusicMetadata, updateMusicMetadataBatch }
+  async function updateMediaMetadataBatch(updates: Array<{ path: string; metadata: Partial<MediaItem> }>) {
+    let changed = false
+    for (const update of updates) {
+      const item = items.value.find((entry) => entry.path === update.path)
+      if (!item) continue
+      Object.assign(item, update.metadata)
+      changed = true
+    }
+    if (!changed) return
+    items.value = applyStoredCorrections(items.value, corrections.value)
+    await save()
+  }
+  return {
+    items, works, musicItems, recent, recentWorks, corrections, loaded, load, previewScan, commitScan,
+    correctionFor, isMetadataLocked, applyManualCorrections, clearManualCorrections,
+    updateProgress, updateMusicMetadata, updateMusicMetadataBatch, updateMediaMetadataBatch,
+  }
 })
+
+function applyStoredCorrections(items: MediaItem[], corrections: Record<string, MediaCorrection>) {
+  return items.map((source) => {
+    const correction = corrections[source.path]
+    if (!correction) return source
+    const item = { ...source }
+    if (correction.title !== undefined) item.title = correction.title
+    if (correction.category !== undefined) item.category = correction.category
+    if (correction.season !== undefined) item.season = correction.season ?? undefined
+    if (correction.episode !== undefined) item.episode = correction.episode ?? undefined
+    return item
+  })
+}
 
 function workIdentity(item: MediaItem) {
   if (item.category === 'pending') return `pending:${item.folderPath ?? parentPath(item.path)}`

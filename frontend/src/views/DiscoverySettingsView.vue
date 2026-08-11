@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Check, ExternalLink, Import, Library, LoaderCircle, LogIn, Music2, RefreshCw, Search, Trash2, Tv2 } from '@lucide/vue'
+import { ArrowLeft, Check, ExternalLink, Import, Library, Link2, LoaderCircle, LogIn, Magnet, Music2, RefreshCw, Search, Trash2, Tv2, Upload } from '@lucide/vue'
+import { Capacitor } from '@capacitor/core'
 import { useDiscoveryStore, type BiliEpisode, type BiliSearchResult, type BiliSource } from '../stores/discovery'
 import { useMediaStore } from '../stores/media'
 import { useNeteaseStore, type NeteasePlaylist } from '../stores/netease'
+import { resourceSearchUrl, searchResources as searchResourceSite, type ResourceSearchResult } from '../services/resourceSearch'
+import { CloudOffline, type OfflineProvider } from '../services/cloudOffline'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,6 +15,10 @@ const discovery = useDiscoveryStore()
 const media = useMediaStore()
 const netease = useNeteaseStore()
 const resourceQuery = ref('')
+const resourceResults = ref<ResourceSearchResult[]>([])
+const resourceError = ref('')
+const offlineProvider = ref<OfflineProvider>('quark')
+const magnetLink = ref('')
 const query = ref('')
 const targetQuery = ref('')
 const targetPath = ref('')
@@ -22,10 +29,50 @@ const notice = ref('')
 const pageError = ref('')
 const autoProgress = ref('')
 
-function searchResources() {
+async function searchResources() {
   const keyword = resourceQuery.value.trim()
   if (!keyword) return
-  window.open(`https://www.btbtla.com/search/${encodeURIComponent(keyword)}`, '_blank', 'noopener,noreferrer')
+  busy.value = 'resource-search'
+  resourceError.value = ''
+  resourceResults.value = []
+  try {
+    resourceResults.value = await searchResourceSite(keyword)
+    if (!resourceResults.value.length) resourceError.value = '网站返回了页面，但没有解析到资源结果，可改用浏览器查看原始结果'
+  } catch (reason) {
+    resourceError.value = `${message(reason)}，可改用浏览器查看原始结果`
+  } finally { busy.value = '' }
+}
+
+function resourceBrowserUrl() { return resourceSearchUrl(resourceQuery.value) }
+
+async function sendMagnet() {
+  const magnet = magnetLink.value.trim()
+  if (!magnet) return
+  if (!Capacitor.isNativePlatform()) {
+    pageError.value = '网盘离线任务目前仅支持 Android 应用'
+    return
+  }
+  busy.value = 'offline-magnet'; clearFeedback()
+  try {
+    const result = await CloudOffline.sendMagnet({ provider: offlineProvider.value, magnet })
+    notice.value = result.message
+  } catch (reason) { pageError.value = message(reason) }
+  finally { busy.value = '' }
+}
+
+async function pickTorrent() {
+  if (!Capacitor.isNativePlatform()) {
+    pageError.value = '种子导入目前仅支持 Android 应用'
+    return
+  }
+  busy.value = 'offline-torrent'; clearFeedback()
+  try {
+    const result = await CloudOffline.pickTorrent({ provider: offlineProvider.value })
+    notice.value = result.message
+  } catch (reason) {
+    const text = message(reason)
+    if (!text.includes('已取消选择')) pageError.value = text
+  } finally { busy.value = '' }
 }
 
 const videoItems = computed(() => media.items.filter((item) => item.category !== 'music'))
@@ -199,10 +246,35 @@ onMounted(async () => {
     </section>
 
     <section class="resource-section">
-      <div class="section-copy"><h2>搜索影视资源</h2><p>输入番剧、电视剧或电影名称，将在浏览器中打开对应的资源搜索结果</p></div>
+      <div class="section-copy"><h2>搜索影视资源</h2><p>输入番剧、电视剧或电影名称，直接读取 BT影视 的公开搜索结果</p></div>
       <form class="source-search resource-search" @submit.prevent="searchResources">
-        <Search :size="18" /><input v-model="resourceQuery" aria-label="影视资源关键词" placeholder="番剧、电视剧或电影名称" /><button :disabled="!resourceQuery.trim()">搜索资源<ExternalLink :size="14" /></button>
+        <Search :size="18" /><input v-model="resourceQuery" aria-label="影视资源关键词" placeholder="番剧、电视剧或电影名称" /><button :disabled="!resourceQuery.trim() || busy === 'resource-search'"><LoaderCircle v-if="busy === 'resource-search'" class="spin" :size="15" />{{ busy === 'resource-search' ? '搜索中' : '搜索资源' }}</button>
       </form>
+      <div v-if="resourceResults.length" class="resource-results">
+        <RouterLink v-for="item in resourceResults" :key="item.url" :to="{ name: 'resource-detail', query: { url: item.url } }">
+          <span class="resource-cover"><img v-if="item.image" :src="item.image" alt="" /><Tv2 v-else :size="20" /></span>
+          <span><strong>{{ item.title }}</strong><small>{{ item.summary || '打开来源页查看详情' }}</small></span>
+          <ExternalLink :size="15" />
+        </RouterLink>
+      </div>
+      <p v-if="resourceError" class="resource-error">{{ resourceError }}</p>
+      <a v-if="resourceQuery.trim()" class="resource-browser-link" :href="resourceBrowserUrl()" target="_blank" rel="noopener noreferrer">在浏览器中查看原始结果 <ExternalLink :size="13" /></a>
+      <p class="resource-credit">搜索结果来自 btbtla.com，BMovie 仅展示公开索引并跳转来源页</p>
+    </section>
+
+    <section class="offline-section">
+      <div class="section-copy"><h2>网盘离线下载</h2><p>将你有权下载的磁力链接或种子文件发送到已安装的网盘客户端，任务由网盘服务商执行</p></div>
+      <div class="provider-switch" aria-label="目标网盘">
+        <button :class="{ active: offlineProvider === 'quark' }" @click="offlineProvider = 'quark'">夸克网盘</button>
+        <button :class="{ active: offlineProvider === 'baidu' }" @click="offlineProvider = 'baidu'">百度网盘</button>
+      </div>
+      <form class="magnet-form" @submit.prevent="sendMagnet">
+        <Magnet :size="18" />
+        <input v-model="magnetLink" aria-label="磁力链接" placeholder="magnet:?xt=urn:btih:..." />
+        <button :disabled="!magnetLink.trim() || Boolean(busy)"><LoaderCircle v-if="busy === 'offline-magnet'" class="spin" :size="15" /><Link2 v-else :size="15" />发送磁力</button>
+      </form>
+      <button class="torrent-button" :disabled="Boolean(busy)" @click="pickTorrent"><LoaderCircle v-if="busy === 'offline-torrent'" class="spin" :size="16" /><Upload v-else :size="16" />选择种子文件</button>
+      <p class="offline-note">磁力链接会同时复制到剪贴板。如果网盘客户端不支持直接接收，打开后可在其离线下载页面粘贴确认</p>
     </section>
 
     <section class="danmaku-section">
@@ -257,6 +329,8 @@ onMounted(async () => {
 
 <style scoped>
 .discovery-page{max-width:1040px}.compact-header{display:flex;align-items:center;justify-content:flex-start;gap:13px}.back-button{display:grid;width:42px;height:42px;place-items:center;border:1px solid var(--line);border-radius:50%;color:var(--ink);background:transparent}.account-section,.netease-section,.resource-section,.danmaku-section,.bindings-section{padding:24px 0;border-top:1px solid var(--line)}.section-copy{max-width:68ch;margin-bottom:16px}.section-copy h2{margin-bottom:5px;font:700 18px/1.25 var(--font-body)}.section-copy p{color:var(--muted);font-size:12px;line-height:1.65}.account-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto auto;align-items:center;gap:12px}.account-row>img{width:48px;height:48px;border-radius:50%;object-fit:cover}.account-row>span{display:grid;gap:3px}.account-row strong{font-size:14px}.account-row small{color:var(--dim);font-size:11px}.secondary-button,.login-button{display:inline-flex;align-items:center;justify-content:center;gap:7px}.secondary-button{min-height:38px;padding:0 13px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--surface);font-size:12px;font-weight:650}.text-button{padding:8px;border:0;background:transparent;font-size:11px}.danger{color:var(--danger)}.playlist-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;margin-top:18px}.playlist-list article{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line)}.playlist-list article>span:nth-child(2){display:grid;min-width:0;gap:4px}.playlist-list strong,.playlist-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.playlist-list strong{font-size:12px}.playlist-list small,.account-hint{color:var(--dim);font-size:10px}.playlist-cover{display:grid;width:46px;height:46px;place-items:center;overflow:hidden;border-radius:6px;color:var(--beam);background:var(--surface)}.playlist-cover img{width:100%;height:100%;object-fit:cover}.account-hint{margin-top:12px}.source-search,.target-filter{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.source-search{max-width:760px;padding-left:13px}.source-search input,.target-filter input{min-width:0;flex:1;border:0;outline:0;color:var(--ink);background:transparent}.source-search input{padding:13px 10px}.source-search button{display:flex;align-items:center;justify-content:center;gap:7px;align-self:stretch;padding:0 18px;border:0;border-radius:0 7px 7px 0;color:#08090d;background:var(--ink);font-size:12px;font-weight:750;white-space:nowrap}.source-search button:disabled,.episode-list button:disabled,.secondary-button:disabled{opacity:.52}.search-results{display:grid;max-width:760px;margin-top:10px;border-top:1px solid var(--line)}.search-results button{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:11px;padding:10px 3px;border:0;border-bottom:1px solid var(--line);color:var(--ink);background:transparent;text-align:left}.search-results img{width:46px;height:62px;border-radius:5px;object-fit:cover}.search-results span{display:grid;gap:4px}.search-results strong{font-size:13px}.search-results small{overflow:hidden;color:var(--dim);font-size:10px;text-overflow:ellipsis;white-space:nowrap}.source-panel{max-width:900px;margin-top:18px;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.source-panel>header{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:12px;margin-bottom:15px}.source-panel>header img{width:52px;height:70px;border-radius:5px;object-fit:cover}.source-panel>header span{display:grid;gap:4px}.source-panel>header strong{font-size:16px}.source-panel>header small{color:var(--dim);font-size:11px}.target-filter{padding-left:11px;margin-bottom:8px}.target-filter input{padding:10px}.target-select{width:100%;height:42px;margin-bottom:12px;padding:0 10px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--canvas);font-size:12px}.episode-list{max-height:330px;overflow-y:auto;border-top:1px solid var(--line)}.episode-list>div{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}.episode-list span{display:grid;min-width:0;gap:3px}.episode-list b{overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.episode-list small{color:var(--dim);font-size:9px}.episode-list button{display:flex;min-height:34px;align-items:center;gap:5px;padding:0 10px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:transparent;font-size:10px}.feedback{max-width:900px;margin:12px 0;padding:11px 12px;border-radius:7px;font-size:12px}.feedback.error{color:#ff918d;background:rgba(255,113,109,.08)}.feedback.success{color:#baff82;background:rgba(157,255,101,.07)}.binding-list{max-width:900px;border-top:1px solid var(--line)}.binding-list>div{display:grid;grid-template-columns:28px minmax(0,1fr) 38px;align-items:center;gap:9px;padding:12px 2px;border-bottom:1px solid var(--line)}.binding-list span{display:grid;min-width:0;gap:3px}.binding-list strong,.binding-list small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.binding-list strong{font-size:12px}.binding-list small{color:var(--dim);font-size:10px}.binding-list button{display:grid;width:34px;height:34px;place-items:center;border:0;color:var(--dim);background:transparent}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-@media(max-width:640px){.account-row{grid-template-columns:44px minmax(0,1fr)}.account-row .secondary-button{grid-row:2;grid-column:1/-1;width:100%}.account-row .text-button{grid-row:3;grid-column:1/-1;width:100%}.playlist-list{grid-template-columns:1fr}.source-panel{padding:14px}.source-panel>header{grid-template-columns:44px minmax(0,1fr)}.source-panel>header img{width:44px;height:60px}.source-panel>header .secondary-button{grid-column:1/-1}.episode-list>div{align-items:start}.episode-list b{white-space:normal}}
+.resource-results{display:grid;max-width:900px;margin-top:14px;border-top:1px solid var(--line)}.resource-results>a{display:grid;grid-template-columns:54px minmax(0,1fr) 22px;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none}.resource-results>a>span:nth-child(2){display:grid;min-width:0;gap:5px}.resource-results strong,.resource-results small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.resource-results strong{font-size:13px}.resource-results small{color:var(--dim);font-size:10px}.resource-cover{display:grid;width:54px;height:70px;place-items:center;overflow:hidden;border-radius:6px;color:var(--beam);background:var(--surface-raised)}.resource-cover img{width:100%;height:100%;object-fit:cover}.resource-browser-link{display:inline-flex;align-items:center;gap:5px;margin-top:12px;color:var(--beam);font-size:11px;text-decoration:none}.resource-error{max-width:760px;margin-top:10px;color:var(--danger);font-size:11px}.resource-credit{margin-top:10px;color:var(--dim);font-size:9px}
+@media(max-width:640px){.account-row{grid-template-columns:44px minmax(0,1fr)}.account-row .secondary-button{grid-row:2;grid-column:1/-1;width:100%}.account-row .text-button{grid-row:3;grid-column:1/-1;width:100%}.playlist-list{grid-template-columns:1fr}.source-panel{padding:14px}.source-panel>header{grid-template-columns:44px minmax(0,1fr)}.source-panel>header img{width:44px;height:60px}.source-panel>header .secondary-button{grid-column:1/-1}.episode-list>div{align-items:start}.episode-list b{white-space:normal}.resource-results>a{grid-template-columns:46px minmax(0,1fr) 18px}.resource-cover{width:46px;height:62px}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none}}
+.offline-section{padding:24px 0;border-top:1px solid var(--line)}.provider-switch{display:flex;width:max-content;gap:4px;margin-bottom:12px;padding:3px;border-radius:8px;background:var(--surface)}.provider-switch button{min-height:34px;padding:0 13px;border:0;border-radius:6px;color:var(--dim);background:transparent;font-size:11px;font-weight:650}.provider-switch button.active{color:var(--ink);background:var(--surface-raised)}.magnet-form{display:grid;max-width:760px;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;padding-left:13px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.magnet-form>svg{color:var(--beam)}.magnet-form input{min-width:0;padding:13px 10px;border:0;outline:0;color:var(--ink);background:transparent}.magnet-form button,.torrent-button{display:flex;min-height:42px;align-items:center;justify-content:center;gap:7px;border:0;font-size:12px;font-weight:700}.magnet-form button{align-self:stretch;padding:0 16px;border-radius:0 7px 7px 0;color:#08090d;background:var(--ink)}.torrent-button{margin-top:10px;padding:0 15px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--surface)}.magnet-form button:disabled,.torrent-button:disabled{opacity:.52}.offline-note{max-width:760px;margin:10px 0 0;color:var(--dim);font-size:10px;line-height:1.6}@media(max-width:520px){.magnet-form{grid-template-columns:auto minmax(0,1fr)}.magnet-form button{grid-column:1/-1;min-height:40px;margin-left:-13px;border-radius:0 0 7px 7px}}
 </style>

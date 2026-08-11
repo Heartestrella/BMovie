@@ -18,6 +18,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MusicPlaybackPlugin.class);
         registerPlugin(OfflineCachePlugin.class);
         registerPlugin(CloudAuthPlugin.class);
+        registerPlugin(CloudOfflinePlugin.class);
         super.onCreate(savedInstanceState);
         bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
             @Override

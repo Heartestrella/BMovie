@@ -70,6 +70,15 @@ const tabs = computed(() => [
   { to: '/files', label: t('nav.files'), icon: Folder },
   { to: '/settings', label: t('nav.settings'), icon: Settings },
 ])
+
+const activeTabIndex = computed(() => {
+  const name = String(router.currentRoute.value.name ?? '')
+  if (name === 'library' || name === 'media-detail' || name === 'player') return 1
+  if (name === 'music' || name === 'music-player') return 2
+  if (name === 'files') return 3
+  if (name.includes('settings') || name === 'offline-cache' || name === 'about' || name === 'resource-detail') return 4
+  return 0
+})
 </script>
 
 <template>
@@ -85,17 +94,22 @@ const tabs = computed(() => [
       <span>{{ backgroundScanLabel }}</span>
     </button>
 
-    <nav v-if="!isOnboarding" class="bottom-nav" :aria-label="t('nav.main')">
+    <nav
+      v-if="!isOnboarding"
+      class="bottom-nav"
+      :style="{ '--active-tab': activeTabIndex }"
+      :aria-label="t('nav.main')"
+    >
+      <i class="nav-indicator" aria-hidden="true" />
       <RouterLink
-        v-for="tab in tabs"
+        v-for="(tab, index) in tabs"
         :key="tab.to"
-        v-slot="{ isActive }"
         :to="tab.to"
         class="nav-item"
+        :class="{ 'nav-item-active': index === activeTabIndex }"
       >
-        <component :is="tab.icon" :size="21" :stroke-width="isActive ? 2.2 : 1.7" aria-hidden="true" />
+        <component :is="tab.icon" :size="21" :stroke-width="index === activeTabIndex ? 2.2 : 1.7" aria-hidden="true" />
         <span>{{ tab.label }}</span>
-        <i v-if="isActive" class="nav-indicator" />
       </RouterLink>
     </nav>
   </div>

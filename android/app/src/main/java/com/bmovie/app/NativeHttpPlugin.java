@@ -45,6 +45,7 @@ import okhttp3.Response;
 @CapacitorPlugin(name = "NativeHttp")
 public class NativeHttpPlugin extends Plugin {
     private static final Set<String> JSON_HOSTS = Set.of("api.bgm.tv", "api.themoviedb.org", "music.163.com", "api.bilibili.com");
+    private static final Set<String> HTML_HOSTS = Set.of("www.btbtla.com");
     private static final Set<String> TMDB_HOSTS = Set.of("api.themoviedb.org", "image.tmdb.org", "images.tmdb.org");
     private static final String CHECK_TMDB_URL = "https://raw.githubusercontent.com/cnwikee/CheckTMDB/refs/heads/main/Tmdb_host_ipv4";
     private static final String PREFS_NAME = "bmovie_trusted_dns";
@@ -71,7 +72,7 @@ public class NativeHttpPlugin extends Plugin {
         new Thread(() -> {
             try {
                 URI uri = URI.create(rawUrl);
-                if (!"https".equalsIgnoreCase(uri.getScheme()) || !JSON_HOSTS.contains(uri.getHost())) {
+                if (!"https".equalsIgnoreCase(uri.getScheme()) || (!JSON_HOSTS.contains(uri.getHost()) && !HTML_HOSTS.contains(uri.getHost()))) {
                     throw new IllegalArgumentException("不允许访问此元数据地址");
                 }
                 initialize(getContext());
@@ -79,7 +80,7 @@ public class NativeHttpPlugin extends Plugin {
                 RequestBody requestBody = body.isEmpty() ? null : RequestBody.create(body, JSON);
                 Request.Builder builder = new Request.Builder()
                     .url(rawUrl)
-                    .header("Accept", "application/json")
+                    .header("Accept", HTML_HOSTS.contains(uri.getHost()) ? "text/html,application/xhtml+xml" : "application/json")
                     .header("User-Agent", "BMovie/0.1 Android")
                     .method(method, requestBody);
                 if ("music.163.com".equals(uri.getHost())) builder.header("Referer", "https://music.163.com/");

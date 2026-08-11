@@ -41,6 +41,7 @@ public class CloudAuthActivity extends AppCompatActivity {
     private static final String PROVIDER_QUARK = "quark";
     private static final String PROVIDER_BAIDU = "baidu";
     private static final String PROVIDER_ALIYUN = "aliyun";
+    private static final String PROVIDER_CMCC = "cmcc";
     private static final String PROVIDER_BILIBILI = "bilibili";
     private static final String PROVIDER_NETEASE = "netease";
 
@@ -51,7 +52,7 @@ public class CloudAuthActivity extends AppCompatActivity {
     private boolean completed;
 
     public static boolean isSupportedProvider(String provider) {
-        return PROVIDER_QUARK.equals(provider) || PROVIDER_BAIDU.equals(provider) || PROVIDER_ALIYUN.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider);
+        return PROVIDER_QUARK.equals(provider) || PROVIDER_BAIDU.equals(provider) || PROVIDER_ALIYUN.equals(provider) || PROVIDER_CMCC.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider);
     }
 
     @Override
@@ -68,6 +69,9 @@ public class CloudAuthActivity extends AppCompatActivity {
         if (PROVIDER_QUARK.equals(provider)) {
             statusView.setText("请登录夸克网盘，登录成功后会自动返回");
             webView.loadUrl("https://pan.quark.cn/");
+        } else if (PROVIDER_CMCC.equals(provider)) {
+            statusView.setText("请登录中国移动云盘，检测到授权信息后会自动返回");
+            webView.loadUrl("https://yun.139.com/");
         } else if (PROVIDER_BILIBILI.equals(provider)) {
             statusView.setText("请在哔哩哔哩官方页面登录，检测到账号后会自动返回");
             webView.loadUrl("https://passport.bilibili.com/login");
@@ -99,7 +103,7 @@ public class CloudAuthActivity extends AppCompatActivity {
         toolbar.addView(close, new LinearLayout.LayoutParams(dp(72), dp(48)));
 
         TextView title = new TextView(this);
-        title.setText(PROVIDER_QUARK.equals(provider) ? "登录夸克网盘" : PROVIDER_BILIBILI.equals(provider) ? "绑定哔哩哔哩" : PROVIDER_NETEASE.equals(provider) ? "绑定网易云音乐" : PROVIDER_BAIDU.equals(provider) ? "授权百度网盘" : "授权阿里云盘");
+        title.setText(PROVIDER_QUARK.equals(provider) ? "登录夸克网盘" : PROVIDER_CMCC.equals(provider) ? "登录中国移动云盘" : PROVIDER_BILIBILI.equals(provider) ? "绑定哔哩哔哩" : PROVIDER_NETEASE.equals(provider) ? "绑定网易云音乐" : PROVIDER_BAIDU.equals(provider) ? "授权百度网盘" : "授权阿里云盘");
         title.setTextColor(Color.WHITE);
         title.setTextSize(16);
         title.setGravity(Gravity.CENTER);
@@ -107,13 +111,14 @@ public class CloudAuthActivity extends AppCompatActivity {
         toolbar.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
 
         Button done = new Button(this);
-        done.setText(PROVIDER_QUARK.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider) ? "完成" : "");
+        done.setText(PROVIDER_QUARK.equals(provider) || PROVIDER_CMCC.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider) ? "完成" : "");
         done.setTextColor(Color.rgb(155, 145, 255));
         done.setTextSize(13);
         done.setBackgroundColor(Color.TRANSPARENT);
-        done.setEnabled(PROVIDER_QUARK.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider));
+        done.setEnabled(PROVIDER_QUARK.equals(provider) || PROVIDER_CMCC.equals(provider) || PROVIDER_BILIBILI.equals(provider) || PROVIDER_NETEASE.equals(provider));
         done.setOnClickListener(view -> {
-            if (PROVIDER_BILIBILI.equals(provider)) captureBilibiliCookie(true);
+            if (PROVIDER_CMCC.equals(provider)) statusView.setText("还没有检测到授权信息，请确认已进入移动云盘文件页面");
+            else if (PROVIDER_BILIBILI.equals(provider)) captureBilibiliCookie(true);
             else if (PROVIDER_NETEASE.equals(provider)) captureNeteaseCookie(true);
             else captureQuarkCookie(true);
         });
@@ -153,6 +158,12 @@ public class CloudAuthActivity extends AppCompatActivity {
         cookies.setAcceptThirdPartyCookies(webView, true);
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                if (PROVIDER_CMCC.equals(provider)) captureCmccAuthorization(request);
+                return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String scheme = uri.getScheme();
@@ -191,6 +202,22 @@ public class CloudAuthActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private void captureCmccAuthorization(WebResourceRequest request) {
+        if (completed || request == null || request.getUrl() == null) return;
+        String host = request.getUrl().getHost();
+        if (host == null || !(host.equals("139.com") || host.endsWith(".139.com"))) return;
+        String authorization = "";
+        for (java.util.Map.Entry<String, String> header : request.getRequestHeaders().entrySet()) {
+            if ("authorization".equalsIgnoreCase(header.getKey())) {
+                authorization = header.getValue() == null ? "" : header.getValue().trim();
+                break;
+            }
+        }
+        if (!authorization.regionMatches(true, 0, "Basic ", 0, 6) || authorization.length() <= 6) return;
+        String credential = authorization.substring(6).trim();
+        runOnUiThread(() -> finishWithCredential(credential, "authorization"));
     }
 
     private void requestOfficialAuthorizationUrl() {

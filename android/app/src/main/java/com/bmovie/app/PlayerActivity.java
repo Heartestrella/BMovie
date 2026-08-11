@@ -10,13 +10,17 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.util.TypedValue;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.Gravity;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
@@ -158,6 +162,9 @@ public class PlayerActivity extends AppCompatActivity {
     private SeekBar danmakuSizeSeek;
     private SeekBar danmakuSpeedSeek;
     private View debugPanel;
+    private View gestureSurface;
+    private TextView gestureValue;
+    private AudioManager audioManager;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<SubtitleSource> subtitles = new ArrayList<>();
@@ -217,8 +224,15 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean hasPlaybackFpsSample;
     private String danmakuSource = "";
     private JSONObject playbackPayload;
+    private float gestureStartX;
+    private float gestureStartY;
+    private float gestureStartBrightness;
+    private int gestureStartVolume;
+    private int gestureMode;
+    private boolean gestureChanged;
 
     private final Runnable hideControlsRunnable = this::hideControls;
+    private final Runnable hideGestureValueRunnable = () -> gestureValue.setVisibility(View.GONE);
     private final Runnable restartVlcRunnable = () -> {
         if (!usingVlc || isFinishing()) return;
         captureProgress();
@@ -261,6 +275,7 @@ public class PlayerActivity extends AppCompatActivity {
         updateSubtitleButton();
         updateDebugVisibility();
         updateDanmakuButton();
+        bindPlaybackGestures();
         showControls(true);
     }
 
@@ -281,6 +296,9 @@ public class PlayerActivity extends AppCompatActivity {
         qualityButton = findViewById(R.id.player_quality);
         debugButton = findViewById(R.id.player_debug_toggle);
         debugPanel = findViewById(R.id.player_debug_panel);
+        gestureSurface = findViewById(R.id.player_gesture_surface);
+        gestureValue = findViewById(R.id.player_gesture_value);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         debugText = findViewById(R.id.player_debug_text);
         qualityHint = findViewById(R.id.player_quality_hint);
         modeBadge = findViewById(R.id.player_mode_badge);
@@ -331,8 +349,6 @@ public class PlayerActivity extends AppCompatActivity {
         });
         findViewById(R.id.player_panel_close).setOnClickListener(view -> closeSettingsPanel());
         panelScrim.setOnClickListener(view -> closeSettingsPanel());
-        playerView.setOnClickListener(view -> toggleControls());
-        vlcVideoLayout.setOnClickListener(view -> toggleControls());
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
@@ -358,6 +374,79 @@ public class PlayerActivity extends AppCompatActivity {
                 scheduleControlsHide();
             }
         });
+    }
+
+    private void bindPlaybackGestures() {
+        gestureSurface.setOnClickListener(view -> toggleControls());
+        gestureSurface.setOnTouchListener((view, event) -> {
+            if (settingsPanel.getVisibility() == View.VISIBLE) return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    gestureStartX = event.getX();
+                    gestureStartY = event.getY();
+                    gestureStartBrightness = currentBrightness();
+                    gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                    gestureMode = 0;
+                    gestureChanged = false;
+                    handler.removeCallbacks(hideGestureValueRunnable);
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float deltaX = event.getX() - gestureStartX;
+                    float deltaY = event.getY() - gestureStartY;
+                    if (gestureMode == 0) {
+                        float threshold = dp(12);
+                        if (Math.abs(deltaY) < threshold || Math.abs(deltaY) < Math.abs(deltaX) * 1.15f) return true;
+                        gestureMode = gestureStartX < view.getWidth() / 2f ? 1 : 2;
+                    }
+                    float change = -deltaY / Math.max(1f, view.getHeight()) * 1.35f;
+                    if (gestureMode == 1) updateGestureBrightness(gestureStartBrightness + change);
+                    else updateGestureVolume(gestureStartVolume, change);
+                    gestureChanged = true;
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    if (!gestureChanged) view.performClick();
+                    else handler.postDelayed(hideGestureValueRunnable, 700);
+                    gestureMode = 0;
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    handler.postDelayed(hideGestureValueRunnable, 300);
+                    gestureMode = 0;
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    private float currentBrightness() {
+        float windowBrightness = getWindow().getAttributes().screenBrightness;
+        if (windowBrightness >= 0f) return windowBrightness;
+        try {
+            return Math.max(0.01f, Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f);
+        } catch (Settings.SettingNotFoundException ignored) {
+            return 0.5f;
+        }
+    }
+
+    private void updateGestureBrightness(float value) {
+        float brightness = Math.max(0.01f, Math.min(1f, value));
+        WindowManager.LayoutParams attributes = getWindow().getAttributes();
+        attributes.screenBrightness = brightness;
+        getWindow().setAttributes(attributes);
+        showGestureValue("亮度", Math.round(brightness * 100f));
+    }
+
+    private void updateGestureVolume(int startVolume, float change) {
+        int maximum = Math.max(1, audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+        int volume = Math.max(0, Math.min(maximum, Math.round(startVolume + change * maximum)));
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0);
+        showGestureValue("音量", Math.round(volume * 100f / maximum));
+    }
+
+    private void showGestureValue(String label, int percent) {
+        gestureValue.setText(label + "  " + percent + "%");
+        gestureValue.setVisibility(View.VISIBLE);
+        gestureValue.bringToFront();
     }
 
     private void bindSettingsControls() {

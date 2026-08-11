@@ -156,7 +156,7 @@ export const useLibraryScanStore = defineStore('library-scan', () => {
               duration: old?.duration,
               lastPlayed: old?.lastPlayed,
             }
-            draft.push(canReuseMetadata(old, metadataLocale, settings) ? {
+            draft.push(canReuseMetadata(old, metadataLocale, settings, media.isMetadataLocked(path)) ? {
               ...old!,
               path: base.path,
               size: base.size,
@@ -316,7 +316,8 @@ function looksLikeEpisode(value: string) {
     || /\[\d{1,3}\]/.test(value)
 }
 
-function canReuseMetadata(item: MediaItem | undefined, locale: string, settings: MetadataSettings) {
+function canReuseMetadata(item: MediaItem | undefined, locale: string, settings: MetadataSettings, locked = false) {
+  if (locked) return Boolean(item && item.category !== 'pending')
   if (!item || item.category === 'pending' || (item.metadataVersion ?? 0) < METADATA_VERSION || item.metadataLocale !== locale) return false
   if (item.metadataProvider === 'tmdb') return true
   const tmdbAvailable = settings.tmdbEnabled && Boolean(settings.tmdbToken.trim())

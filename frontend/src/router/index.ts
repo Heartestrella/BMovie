@@ -17,6 +17,7 @@ const router = createRouter({
     { path: '/settings/library', name: 'library-settings', component: () => import('../views/LibrarySourcesView.vue') },
     { path: '/settings/metadata', name: 'metadata-settings', component: () => import('../views/MetadataSettingsView.vue') },
     { path: '/settings/discovery', name: 'discovery-settings', component: () => import('../views/DiscoverySettingsView.vue') },
+    { path: '/resources/detail', name: 'resource-detail', component: () => import('../views/ResourceDetailView.vue') },
     { path: '/settings/player', name: 'player-settings', component: () => import('../views/PlayerSettingsView.vue') },
     { path: '/settings/cache', name: 'offline-cache', component: () => import('../views/OfflineCacheView.vue') },
     { path: '/settings/about', name: 'about', component: () => import('../views/AboutView.vue') },
